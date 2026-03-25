@@ -22,7 +22,7 @@ jobs:
         arduino-cli compile --fqbn esp32:esp32:esp32s3 .
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: firmware
         path: build/
