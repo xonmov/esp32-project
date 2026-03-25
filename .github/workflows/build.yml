@@ -20,9 +20,9 @@ jobs:
     - name: Compile
       run: |
         arduino-cli compile --fqbn esp32:esp32:esp32s3 main --output-dir build --export-binaries
-        
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: firmware
-        path: main/build/**/*.bin
+        path: build
