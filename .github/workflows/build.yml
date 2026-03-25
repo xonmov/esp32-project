@@ -19,7 +19,7 @@ jobs:
 
     - name: Compile
       run: |
-        arduino-cli compile --fqbn esp32:esp32:esp32s3 .
+        arduino-cli compile --fqbn esp32:esp32:esp32s3 main
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
