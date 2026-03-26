@@ -5,6 +5,6 @@ void setup() {
 }
 
 void loop() {
-  Serial.println("Hello from OTA!");
+  Serial.println("Hello from Naveen");
   delay(2000);
 }
