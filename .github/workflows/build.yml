@@ -9,7 +9,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Setup Arduino
+    - name: Setup Arduino CLI
       uses: arduino/setup-arduino-cli@v1
 
     - name: Install ESP32 core
@@ -19,10 +19,15 @@ jobs:
 
     - name: Compile
       run: |
-        arduino-cli compile --fqbn esp32:esp32:esp32s3 main --output-dir build --export-binaries
+        arduino-cli compile \
+        --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=default \
+        --build-property upload.maximum_size=3145728 \
+        --output-dir build \
+        --export-binaries \
+        main
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: firmware
-        path: build
+        path: build/*.bin
