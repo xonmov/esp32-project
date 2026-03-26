@@ -1,8 +1,8 @@
 #include <WiFi.h>
 #include "ota.h"
 
-const char* ssid = "ESP_TEST";
-const char* password = "12345678";
+const char* ssid = "POCO";
+const char* password = "123456789";
 
 void setup() {
   Serial.begin(115200);
@@ -17,6 +17,6 @@ void setup() {
 
 void loop() {
   handleOTA();  // 🔥 just one line
-
+ Serial.println("URAY");
   // your project code here
 }
