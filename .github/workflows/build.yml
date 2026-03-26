@@ -20,8 +20,7 @@ jobs:
     - name: Compile
       run: |
         arduino-cli compile \
-        --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=default \
-        --build-property upload.maximum_size=3145728 \
+        --fqbn esp32:esp32:XIAO_ESP32S3 \
         --output-dir build \
         --export-binaries \
         main
