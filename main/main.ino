@@ -17,6 +17,7 @@ void setup() {
 
 void loop() {
   handleOTA();  // 🔥 just one line
- Serial.println("URAY");
+delay(1000)
+ Serial.println("ok");
   // your project code here
 }
