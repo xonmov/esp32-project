@@ -20,7 +20,7 @@ void setup() {
 
   setupOTA();   // 🔥 just one line
 
-ledcSetup(pwmChannel, pwmFreq, pwmResolution);
+  ledcSetup(pwmChannel, pwmFreq, pwmResolution);
   ledcAttachPin(motorPin, pwmChannel);
 
 }
