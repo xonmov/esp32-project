@@ -19,7 +19,7 @@ void setup() {
   setupOTA();   // 🔥 just one line
 
   ledcAttach(motorPin, 10000, 8); // pin, frequency, resolution
-}
+
 
 }
 
