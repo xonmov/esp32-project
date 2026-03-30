@@ -4,7 +4,7 @@
 const char* ssid = "POCO";
 const char* password = "123456789";
 
-const int motorPin = D0;
+
 
 
 
@@ -28,7 +28,7 @@ void loop() {
 delay(1000);
  Serial.println("ok");
   
-ledcWrite(motorPin, 200); // constant speed
+
 
 
 }
