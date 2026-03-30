@@ -4,7 +4,7 @@
 const char* ssid = "POCO";
 const char* password = "123456789";
 
-
+const int motorPin = D1; 
 
 
 
@@ -19,6 +19,8 @@ void setup() {
   setupOTA();   // 🔥 just one line
 
 
+pinMode(motorPin, OUTPUT);
+
 
 }
 
@@ -27,7 +29,10 @@ void loop() {
 delay(1000);
  Serial.println("ok");
   
-
+digitalWrite(motorPin, HIGH);
+  delay(1000);
+  digitalWrite(motorPin, LOW);
+  delay(1000);
 
 
 }
