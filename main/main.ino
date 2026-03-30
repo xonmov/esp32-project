@@ -29,10 +29,20 @@ void loop() {
 delay(1000);
  Serial.println("ok");
   
-digitalWrite(motorPin, HIGH);
-  delay(1000);
-  digitalWrite(motorPin, LOW);
-  delay(1000);
+analogWrite(motorPin, 75); 
+  delay(2000);
+
+  // 2. Medium Speed
+  analogWrite(motorPin, 150);
+  delay(2000);
+
+  // 3. Full Speed
+  analogWrite(motorPin, 255);
+  delay(2000);
+
+  // 4. Stop
+  analogWrite(motorPin, 0);
+  delay(3000);
 
 
 }
