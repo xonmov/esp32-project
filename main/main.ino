@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include "ota.h"
 #include <Wire.h>
+#include <Adafruit_MPU6050.h>
 
 const char* ssid = "POCO";
 const char* password = "123456789";
@@ -19,34 +20,22 @@ void setup() {
 
   setupOTA();   // 🔥 just one line
 
+Wire.begin(D3, D2); // Start I2C on your pins
+  mpu.begin();        // Initialize the sensor
 
-// Start I2C on your specific pins
-  Wire.begin(D3, D2); // SDA = D3, SCL = D2
-  Serial.println("\nScanning for MPU6050...");
 
 
 }
 
 void loop() {
   handleOTA();  // 🔥 just one line
-byte error, address;
-  int nDevices = 0;
+sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
 
-  for (address = 1; address < 127; address++) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-
-    if (error == 0) {
-      Serial.print("SUCCESS! Device found at address 0x");
-      Serial.println(address, HEX); // Should show 0x68
-      nDevices++;
-    }
-  }
-
-  if (nDevices == 0) {
-    Serial.println("No device found. Check wires.");
-  }
-  delay(3000);
+  // Show X and Y acceleration (Tilt)
+  Serial.print("X: "); Serial.print(a.acceleration.x);
+  Serial.print("  Y: "); Serial.println(a.acceleration.y);
+  delay(100);
 
 
 }
