@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include "ota.h"
+#include <Wire.h>
 
 const char* ssid = "POCO";
 const char* password = "123456789";
@@ -19,29 +20,32 @@ void setup() {
   setupOTA();   // 🔥 just one line
 
 
-pinMode(motorPin, OUTPUT);
+// Start I2C on your specific pins
+  Wire.begin(D3, D2); // SDA = D3, SCL = D2
+  Serial.println("\nScanning for MPU6050...");
 
 
 }
 
 void loop() {
   handleOTA();  // 🔥 just one line
-delay(1000);
- Serial.println("ok");
-  
-analogWrite(motorPin, 75); 
-  delay(2000);
+byte error, address;
+  int nDevices = 0;
 
-  // 2. Medium Speed
-  analogWrite(motorPin, 150);
-  delay(2000);
+  for (address = 1; address < 127; address++) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
 
-  // 3. Full Speed
-  analogWrite(motorPin, 255);
-  delay(2000);
+    if (error == 0) {
+      Serial.print("SUCCESS! Device found at address 0x");
+      Serial.println(address, HEX); // Should show 0x68
+      nDevices++;
+    }
+  }
 
-  // 4. Stop
-  analogWrite(motorPin, 0);
+  if (nDevices == 0) {
+    Serial.println("No device found. Check wires.");
+  }
   delay(3000);
 
 
