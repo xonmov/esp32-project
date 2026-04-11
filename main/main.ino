@@ -10,6 +10,7 @@ const char* password = "123456789";
 const int motorPin = D1; 
 
 Adafruit_MPU6050 mpu;
+bool mpuReady = false; // Flag to track if sensor is working
 
 void setup() {
   Serial.begin(115200);
@@ -21,38 +22,35 @@ void setup() {
 
   setupOTA();   // 🔥 just one line
 
-  while (!Serial) delay(10);
-// 1. Setup the pins first
-  Serial.println("Starting I2C on D3/D2...");
-  Wire.begin(D3, D2); 
-  
-  // 2. Add a tiny delay to let the sensor wake up
-  delay(100);
+  Wire.begin(D3, D2); // SDA = D3, SCL = D2
+  delay(500);         // Give it a moment to wake up
 
-  // 3. Now try to start the library
-  if (!mpu.begin()) {
-    Serial.println("Failed to find MPU6050 chip");
-    // Check if the I2C scanner still sees it
-    while (1) delay(10);
+  if (mpu.begin(0x68)) {
+    Serial.println("MPU6050: OK");
+    mpuReady = true;
+  } else {
+    Serial.println("MPU6050: NOT FOUND (Check wiring/power)");
+    // No while loop here; code continues to loop()
   }
-  
-  Serial.println("MPU6050 Found!");
 
 }
 
 void loop() {
   handleOTA();  // 🔥 just one line
-sensors_event_t a, g, temp;
+ if (mpuReady) {
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+
+    Serial.print("X:"); Serial.print(a.acceleration.x);
+    Serial.print(" Y:"); Serial.print(a.acceleration.y);
+    Serial.print(" Z:"); Serial.println(a.acceleration.z);
+  } else {
+    // If not found, just print a warning every second
+    Serial.println("Waiting for sensor...");
+    delay(1000); 
+  }
   
-  // Now 'mpu' is declared, so this line will work!
-  mpu.getEvent(&a, &g, &temp);
-
-  Serial.print("Accel X: ");
-  Serial.print(a.acceleration.x);
-  Serial.print(" | Y: ");
-  Serial.println(a.acceleration.y);
-
-  delay(100);
+  delay(50); 
 
 
 }
