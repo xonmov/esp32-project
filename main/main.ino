@@ -7,50 +7,61 @@
 const char* ssid = "POCO";
 const char* password = "123456789";
 
-const int motorPin = D1; 
-
 Adafruit_MPU6050 mpu;
-bool mpuReady = false; // Flag to track if sensor is working
+
+// Custom I2C pins
+#define SDA_PIN D3
+#define SCL_PIN D2
 
 void setup() {
   Serial.begin(115200);
 
+  // WiFi
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) delay(500);
-
   Serial.println(WiFi.localIP());
 
-  setupOTA();   // 🔥 just one line
+  // OTA
+  setupOTA();
 
-  Wire.begin(D3, D2); // SDA = D3, SCL = D2
-  delay(500);         // Give it a moment to wake up
+  // I2C init with custom pins
+  Wire.begin(SDA_PIN, SCL_PIN);
 
-  if (mpu.begin(0x68)) {
-    Serial.println("MPU6050: OK");
-    mpuReady = true;
-  } else {
-    Serial.println("MPU6050: NOT FOUND (Check wiring/power)");
-    // No while loop here; code continues to loop()
+  // MPU init
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 ❌");
+    while (1) delay(10);
   }
 
+  Serial.println("MPU6050 Found ✅");
+
+  // Optional settings
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 }
 
 void loop() {
-  handleOTA();  // 🔥 just one line
- if (mpuReady) {
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
+  handleOTA();
 
-    Serial.print("X:"); Serial.print(a.acceleration.x);
-    Serial.print(" Y:"); Serial.print(a.acceleration.y);
-    Serial.print(" Z:"); Serial.println(a.acceleration.z);
-  } else {
-    // If not found, just print a warning every second
-    Serial.println("Waiting for sensor...");
-    delay(1000); 
-  }
-  
-  delay(50); 
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
 
+  Serial.print("Accel X: ");
+  Serial.print(a.acceleration.x);
+  Serial.print(" Y: ");
+  Serial.print(a.acceleration.y);
+  Serial.print(" Z: ");
+  Serial.println(a.acceleration.z);
 
+  Serial.print("Gyro X: ");
+  Serial.print(g.gyro.x);
+  Serial.print(" Y: ");
+  Serial.print(g.gyro.y);
+  Serial.print(" Z: ");
+  Serial.println(g.gyro.z);
+
+  Serial.println("------");
+
+  delay(500);
 }
