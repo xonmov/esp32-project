@@ -2,13 +2,14 @@
 #include "ota.h"
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
 
 const char* ssid = "POCO";
 const char* password = "123456789";
 
 const int motorPin = D1; 
 
-
+Adafruit_MPU6050 mpu;
 
 void setup() {
   Serial.begin(115200);
@@ -20,9 +21,15 @@ void setup() {
 
   setupOTA();   // 🔥 just one line
 
-Wire.begin(D3, D2); // Start I2C on your pins
-  mpu.begin();        // Initialize the sensor
+Wire.begin(D3, D2); 
 
+  // Initialize the sensor
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) { delay(10); }
+  }
+  
+  Serial.println("MPU6050 Found!");
 
 
 }
@@ -30,11 +37,15 @@ Wire.begin(D3, D2); // Start I2C on your pins
 void loop() {
   handleOTA();  // 🔥 just one line
 sensors_event_t a, g, temp;
+  
+  // Now 'mpu' is declared, so this line will work!
   mpu.getEvent(&a, &g, &temp);
 
-  // Show X and Y acceleration (Tilt)
-  Serial.print("X: "); Serial.print(a.acceleration.x);
-  Serial.print("  Y: "); Serial.println(a.acceleration.y);
+  Serial.print("Accel X: ");
+  Serial.print(a.acceleration.x);
+  Serial.print(" | Y: ");
+  Serial.println(a.acceleration.y);
+
   delay(100);
 
 
