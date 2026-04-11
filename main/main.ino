@@ -21,16 +21,22 @@ void setup() {
 
   setupOTA();   // 🔥 just one line
 
-Wire.begin(D3, D2); 
+  while (!Serial) delay(10);
+// 1. Setup the pins first
+  Serial.println("Starting I2C on D3/D2...");
+  Wire.begin(D3, D2); 
+  
+  // 2. Add a tiny delay to let the sensor wake up
+  delay(100);
 
-  // Initialize the sensor
+  // 3. Now try to start the library
   if (!mpu.begin()) {
     Serial.println("Failed to find MPU6050 chip");
-    while (1) { delay(10); }
+    // Check if the I2C scanner still sees it
+    while (1) delay(10);
   }
   
   Serial.println("MPU6050 Found!");
-
 
 }
 
