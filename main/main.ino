@@ -9,59 +9,58 @@ const char* password = "123456789";
 
 Adafruit_MPU6050 mpu;
 
-// Custom I2C pins
-#define SDA_PIN D3
-#define SCL_PIN D2
-
 void setup() {
   Serial.begin(115200);
 
-  // WiFi
+  // 🔌 Connect WiFi
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) delay(500);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected ✅");
+  Serial.print("IP: ");
   Serial.println(WiFi.localIP());
 
-  // OTA
+  // 🔥 OTA start
   setupOTA();
 
-  // I2C init with custom pins
-  Wire.begin(SDA_PIN, SCL_PIN);
+  // 🔧 I2C with YOUR WORKING PINS
+  Wire.begin(D3, D2);  // SDA = D3, SCL = D2
 
-  // MPU init
-  if (!mpu.begin()) {
+  // 🔍 MPU init (IMPORTANT fix)
+  if (!mpu.begin(0x68, &Wire)) {
     Serial.println("Failed to find MPU6050 ❌");
     while (1) delay(10);
   }
 
   Serial.println("MPU6050 Found ✅");
 
-  // Optional settings
+  // ⚙️ Sensor settings
   mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
   mpu.setGyroRange(MPU6050_RANGE_500_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 }
 
 void loop() {
+  // 🔥 OTA handler
   handleOTA();
 
+  // 📊 Read sensor
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
 
-  Serial.print("Accel X: ");
-  Serial.print(a.acceleration.x);
-  Serial.print(" Y: ");
-  Serial.print(a.acceleration.y);
-  Serial.print(" Z: ");
+  Serial.print("Accel: ");
+  Serial.print(a.acceleration.x); Serial.print(", ");
+  Serial.print(a.acceleration.y); Serial.print(", ");
   Serial.println(a.acceleration.z);
 
-  Serial.print("Gyro X: ");
-  Serial.print(g.gyro.x);
-  Serial.print(" Y: ");
-  Serial.print(g.gyro.y);
-  Serial.print(" Z: ");
+  Serial.print("Gyro: ");
+  Serial.print(g.gyro.x); Serial.print(", ");
+  Serial.print(g.gyro.y); Serial.print(", ");
   Serial.println(g.gyro.z);
 
   Serial.println("------");
 
-  delay(500);
+  delay(300);
 }
