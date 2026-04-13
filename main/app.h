@@ -1,12 +1,16 @@
 #ifndef APP_H
 #define APP_H
 
+// we use external log function from main
+extern void logPrint(String msg);
+
+// ===== YOUR CODE =====
 void appSetup() {
-  Serial.println("App started");
+  logPrint("App Started");
 }
 
 void appLoop() {
-  Serial.println("Hello from my code!");
+  logPrint("Hello from my app!");
   delay(2000);
 }
 
