@@ -38,7 +38,7 @@ void setupOTA() {
   String page = "<html><head>";
 
   // 🔥 auto refresh every 2 seconds
-  page += "<meta http-equiv='refresh' content='2'>";
+  page += "<meta http-equiv='refresh' content='1'>";
 
   page += "</head><body>";
   page += "<h2>Logs (Auto Refresh)</h2>";
