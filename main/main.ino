@@ -35,9 +35,18 @@ void setupOTA() {
   });
 
   server.on("/logs", HTTP_GET, []() {
-    server.send(200, "text/html",
-      "<h2>Logs</h2><div style='font-family:monospace'>" + logs + "</div>");
-  });
+  String page = "<html><head>";
+
+  // 🔥 auto refresh every 2 seconds
+  page += "<meta http-equiv='refresh' content='2'>";
+
+  page += "</head><body>";
+  page += "<h2>Logs (Auto Refresh)</h2>";
+  page += "<div style='font-family:monospace'>" + logs + "</div>";
+  page += "</body></html>";
+
+  server.send(200, "text/html", page);
+});
 
   server.on("/update", HTTP_POST, []() {
     server.send(200, "text/plain", Update.hasError() ? "FAIL" : "SUCCESS");
