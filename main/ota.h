@@ -6,17 +6,39 @@
 #include <Update.h>
 
 WebServer otaServer(80);
+String logs = "";
+
+// 🔥 custom log function
+void logPrint(String msg) {
+  Serial.println(msg);
+  logs += msg + "<br>";
+
+  // limit size (important)
+  if (logs.length() > 5000) {
+    logs = logs.substring(logs.length() - 3000);
+  }
+}
 
 void setupOTA() {
+
+  // OTA page
   otaServer.on("/", HTTP_GET, []() {
     otaServer.send(200, "text/html",
       "<h2>OTA Update</h2>"
       "<form method='POST' action='/update' enctype='multipart/form-data'>"
       "<input type='file' name='update'>"
       "<input type='submit' value='Upload'>"
-      "</form>");
+      "</form>"
+      "<br><a href='/logs'>View Logs</a>");
   });
 
+  // Logs page
+  otaServer.on("/logs", HTTP_GET, []() {
+    otaServer.send(200, "text/html",
+      "<h2>Logs</h2><div style='font-family:monospace'>" + logs + "</div>");
+  });
+
+  // OTA update handler
   otaServer.on("/update", HTTP_POST, []() {
     otaServer.send(200, "text/plain", Update.hasError() ? "FAIL" : "SUCCESS");
     delay(1000);
@@ -25,7 +47,7 @@ void setupOTA() {
     HTTPUpload& upload = otaServer.upload();
 
     if (upload.status == UPLOAD_FILE_START) {
-      Serial.println("OTA Start");
+      logPrint("OTA Start");
       Update.begin(UPDATE_SIZE_UNKNOWN);
     } 
     else if (upload.status == UPLOAD_FILE_WRITE) {
@@ -33,15 +55,15 @@ void setupOTA() {
     } 
     else if (upload.status == UPLOAD_FILE_END) {
       if (Update.end(true)) {
-        Serial.println("OTA Success");
+        logPrint("OTA Success");
       } else {
-        Serial.println("OTA Failed");
+        logPrint("OTA Failed");
       }
     }
   });
 
   otaServer.begin();
-  Serial.println("OTA Ready");
+  logPrint("OTA Ready");
 }
 
 void handleOTA() {
