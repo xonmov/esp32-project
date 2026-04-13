@@ -9,45 +9,58 @@
 extern void logPrint(String msg);
 
 Adafruit_MPU6050 mpu;
-bool mpu_ok = false;
+
+// Angles
+float pitch = 0, roll = 0;
+unsigned long prevTime = 0;
+float alpha = 0.98;
 
 // ===== YOUR CODE =====
 void appSetup() {
   logPrint("App Started");
 
-  // Start I2C
+  // I2C start
   Wire.begin(D3, D2);
 
-  // Try to start MPU (force start)
-  if (mpu.begin(0x68, &Wire)) {
-    logPrint("MPU6050 FOUND ✅");
-    mpu_ok = true;
-  } else {
-    logPrint("MPU NOT FOUND ❌ (trying anyway)");
-    mpu.begin(0x68, &Wire);  // force start for clone sensors
-    mpu_ok = true; // allow reading even if check fails
-  }
+  // Start MPU (force start for clone)
+  mpu.begin(0x68, &Wire);
+
+  logPrint("MPU Started");
 }
 
 void appLoop() {
-  if (mpu_ok) {
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
 
-    logPrint("Accel X: " + String(a.acceleration.x) +
-             " Y: " + String(a.acceleration.y) +
-             " Z: " + String(a.acceleration.z));
+  // Time
+  unsigned long now = millis();
+  float dt = (now - prevTime) / 1000.0;
+  prevTime = now;
 
-    logPrint("Gyro X: " + String(g.gyro.x) +
-             " Y: " + String(g.gyro.y) +
-             " Z: " + String(g.gyro.z));
+  // Raw data
+  float ax = a.acceleration.x;
+  float ay = a.acceleration.y;
+  float az = a.acceleration.z;
 
-    logPrint("Temp: " + String(temp.temperature));
-  } else {
-    logPrint("MPU not working...");
-  }
+  float gx = g.gyro.x;
+  float gy = g.gyro.y;
 
-  delay(1000);
+  // Convert gyro to deg/s
+  float gx_deg = gx * 180 / PI;
+  float gy_deg = gy * 180 / PI;
+
+  // Accel angle
+  float pitchAcc = atan2(-ax, sqrt(ay * ay + az * az)) * 180 / PI;
+  float rollAcc  = atan2(ay, az) * 180 / PI;
+
+  // Complementary filter
+  pitch = alpha * (pitch + gx_deg * dt) + (1 - alpha) * pitchAcc;
+  roll  = alpha * (roll  + gy_deg * dt) + (1 - alpha) * rollAcc;
+
+  // Print using logPrint
+  logPrint("Pitch: " + String(pitch) + " | Roll: " + String(roll));
+
+  delay(200);
 }
 
 #endif
