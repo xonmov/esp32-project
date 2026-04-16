@@ -8,7 +8,7 @@ WebServer server(80);
 const char* ssid = "ESP_TEST";
 const char* password = "12345678";
 
-// D10 pin (GPIO9)
+// D10 pin (GPI9)
 int testPin = 8;
 
 // ===== HTML =====
