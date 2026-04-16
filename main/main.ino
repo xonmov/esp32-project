@@ -1,99 +1,99 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Update.h>
-#include "app.h"
-
-// ===== WiFi =====
-const char* ssid = "POCO";
-const char* password = "123456789";
 
 WebServer server(80);
 
-// ===== LOG SYSTEM =====
-String logs = "";
+// WiFi AP
+const char* ssid = "ESP_TEST";
+const char* password = "12345678";
 
-void logPrint(String msg) {
-  Serial.println(msg);
-  logs += msg + "<br>";
+// D10 pin (GPIO9)
+int testPin = 8;
 
-  if (logs.length() > 5000) {
-    logs = logs.substring(logs.length() - 3000);
-  }
+// ===== HTML =====
+String page = R"====(
+<!DOCTYPE html>
+<html>
+<body style="text-align:center;">
+<h2>ESP32 D10 TEST + OTA</h2>
+
+<button onclick="fetch('/on')">ON</button>
+<button onclick="fetch('/off')">OFF</button>
+
+<hr>
+
+<h3>Upload Firmware (.bin)</h3>
+<form method='POST' action='/update' enctype='multipart/form-data'>
+<input type='file' name='update'>
+<input type='submit' value='Upload'>
+</form>
+
+</body>
+</html>
+)====";
+
+// ===== HANDLERS =====
+void handleRoot() {
+  server.send(200, "text/html", page);
 }
 
-// ===== OTA =====
-void setupOTA() {
+void handleOn() {
+  digitalWrite(testPin, HIGH);
+  server.send(200, "text/plain", "ON");
+}
 
-  server.on("/", HTTP_GET, []() {
-    server.send(200, "text/html",
-      "<h2>ESP32 OTA</h2>"
-      "<form method='POST' action='/update' enctype='multipart/form-data'>"
-      "<input type='file' name='update'>"
-      "<input type='submit' value='Upload'>"
-      "</form>"
-      "<br><a href='/logs'>View Logs</a>");
-  });
+void handleOff() {
+  digitalWrite(testPin, LOW);
+  server.send(200, "text/plain", "OFF");
+}
 
-  server.on("/logs", HTTP_GET, []() {
-  String page = "<html><head>";
+// OTA
+void handleUpdate() {
+  server.send(200, "text/plain", Update.hasError() ? "FAIL" : "SUCCESS");
+  delay(1000);
+  ESP.restart();
+}
 
-  // 🔥 auto refresh every 2 seconds
-  page += "<meta http-equiv='refresh' content='1'>";
+void handleUpload() {
+  HTTPUpload& upload = server.upload();
 
-  page += "</head><body>";
-  page += "<h2>Logs (Auto Refresh)</h2>";
-  page += "<div style='font-family:monospace'>" + logs + "</div>";
-  page += "</body></html>";
-
-  server.send(200, "text/html", page);
-});
-
-  server.on("/update", HTTP_POST, []() {
-    server.send(200, "text/plain", Update.hasError() ? "FAIL" : "SUCCESS");
-    delay(1000);
-    ESP.restart();
-  }, []() {
-    HTTPUpload& upload = server.upload();
-
-    if (upload.status == UPLOAD_FILE_START) {
-      logPrint("Update Start");
-
-      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-        logPrint("Update Begin Failed");
-      }
-    } 
-    else if (upload.status == UPLOAD_FILE_WRITE) {
-      Update.write(upload.buf, upload.currentSize);
-    } 
-    else if (upload.status == UPLOAD_FILE_END) {
-      if (Update.end(true)) {
-        logPrint("Update Success");
-      } else {
-        logPrint("Update Failed");
-      }
-    }
-  });
-
-  server.begin();
-  logPrint("OTA Ready");
+  if (upload.status == UPLOAD_FILE_START) {
+    Update.begin(UPDATE_SIZE_UNKNOWN);
+  } 
+  else if (upload.status == UPLOAD_FILE_WRITE) {
+    Update.write(upload.buf, upload.currentSize);
+  } 
+  else if (upload.status == UPLOAD_FILE_END) {
+    Update.end(true);
+  }
 }
 
 // ===== SETUP =====
 void setup() {
   Serial.begin(115200);
 
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) delay(500);
+  pinMode(testPin, OUTPUT);
+  digitalWrite(testPin, LOW);
 
-  logPrint("WiFi Connected");
-  logPrint(WiFi.localIP().toString());
+  // Strong WiFi
+  WiFi.mode(WIFI_AP);
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+  WiFi.softAP(ssid, password);
 
-  setupOTA();
-  appSetup();   // 🔥 from app.h
+  Serial.println("WiFi Ready");
+  Serial.println(WiFi.softAPIP());
+
+  // Routes
+  server.on("/", handleRoot);
+  server.on("/on", handleOn);
+  server.on("/off", handleOff);
+  server.on("/update", HTTP_POST, handleUpdate, handleUpload);
+
+  server.begin();
 }
 
 // ===== LOOP =====
 void loop() {
-  server.handleClient(); // OTA
-  appLoop();             // 🔥 from app.h
+  server.handleClient();
 }
