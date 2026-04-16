@@ -9,7 +9,7 @@ const char* ssid = "ESP_TEST";
 const char* password = "12345678";
 
 // D10 pin (GPI9)
-int testPin = 8;
+int testPin = 9;
 
 // ===== HTML =====
 String page = R"====(
