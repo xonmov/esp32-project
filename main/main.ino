@@ -8,17 +8,21 @@ WebServer server(80);
 const char* ssid = "ESP_TEST";
 const char* password = "12345678";
 
-// D10 pin (GPI9)
-int testPin = 9;
+// D10 = GPIO9
+int pin = 9;
+int ch = 0;
+int speedVal = 0;
 
 // ===== HTML =====
 String page = R"====(
 <!DOCTYPE html>
 <html>
 <body style="text-align:center;">
-<h2>ESP32 D10 TEST + OTA</h2>
+<h2>PWM TEST (D10) + OTA</h2>
 
-<button onclick="fetch('/on')">ON</button>
+<button onclick="fetch('/low')">LOW</button>
+<button onclick="fetch('/mid')">MID</button>
+<button onclick="fetch('/high')">HIGH</button>
 <button onclick="fetch('/off')">OFF</button>
 
 <hr>
@@ -38,17 +42,27 @@ void handleRoot() {
   server.send(200, "text/html", page);
 }
 
-void handleOn() {
-  digitalWrite(testPin, HIGH);
-  server.send(200, "text/plain", "ON");
+void handleLow() {
+  speedVal = 60;
+  server.send(200, "text/plain", "LOW");
+}
+
+void handleMid() {
+  speedVal = 150;
+  server.send(200, "text/plain", "MID");
+}
+
+void handleHigh() {
+  speedVal = 255;
+  server.send(200, "text/plain", "HIGH");
 }
 
 void handleOff() {
-  digitalWrite(testPin, LOW);
+  speedVal = 0;
   server.send(200, "text/plain", "OFF");
 }
 
-// OTA
+// ===== OTA =====
 void handleUpdate() {
   server.send(200, "text/plain", Update.hasError() ? "FAIL" : "SUCCESS");
   delay(1000);
@@ -73,20 +87,22 @@ void handleUpload() {
 void setup() {
   Serial.begin(115200);
 
-  pinMode(testPin, OUTPUT);
-  digitalWrite(testPin, LOW);
+  // PWM setup
+  ledcSetup(ch, 20000, 8);
+  ledcAttachPin(pin, ch);
 
-  // Strong WiFi
+  // WiFi AP
   WiFi.mode(WIFI_AP);
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
   WiFi.softAP(ssid, password);
 
-  Serial.println("WiFi Ready");
   Serial.println(WiFi.softAPIP());
 
   // Routes
   server.on("/", handleRoot);
-  server.on("/on", handleOn);
+  server.on("/low", handleLow);
+  server.on("/mid", handleMid);
+  server.on("/high", handleHigh);
   server.on("/off", handleOff);
   server.on("/update", HTTP_POST, handleUpdate, handleUpload);
 
@@ -96,4 +112,7 @@ void setup() {
 // ===== LOOP =====
 void loop() {
   server.handleClient();
+
+  // Apply PWM
+  ledcWrite(ch, speedVal);
 }
