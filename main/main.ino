@@ -59,4 +59,68 @@ void p1off(){ digitalWrite(P1,LOW); server.send(200,"text/plain","P1 OFF"); }
 
 // P2
 void p2on(){ digitalWrite(P2,HIGH); server.send(200,"text/plain","P2 ON"); }
-void
+void p2off(){ digitalWrite(P2,LOW); server.send(200,"text/plain","P2 OFF"); }
+
+// P3
+void p3on(){ digitalWrite(P3,HIGH); server.send(200,"text/plain","P3 ON"); }
+void p3off(){ digitalWrite(P3,LOW); server.send(200,"text/plain","P3 OFF"); }
+
+// P4
+void p4on(){ digitalWrite(P4,HIGH); server.send(200,"text/plain","P4 ON"); }
+void p4off(){ digitalWrite(P4,LOW); server.send(200,"text/plain","P4 OFF"); }
+
+// OTA
+void handleUpdate(){
+  server.send(200,"text/plain",Update.hasError()?"FAIL":"OK");
+  delay(1000);
+  ESP.restart();
+}
+
+void handleUpload(){
+  HTTPUpload& upload = server.upload();
+
+  if(upload.status==UPLOAD_FILE_START){
+    Update.begin();
+  }
+  else if(upload.status==UPLOAD_FILE_WRITE){
+    Update.write(upload.buf, upload.currentSize);
+  }
+  else if(upload.status==UPLOAD_FILE_END){
+    Update.end(true);
+  }
+}
+
+// ===== SETUP =====
+void setup(){
+  Serial.begin(115200);
+
+  pinMode(P1,OUTPUT);
+  pinMode(P2,OUTPUT);
+  pinMode(P3,OUTPUT);
+  pinMode(P4,OUTPUT);
+
+  WiFi.softAP(ssid,password);
+
+  server.on("/",handleRoot);
+
+  server.on("/p1on",p1on);
+  server.on("/p1off",p1off);
+
+  server.on("/p2on",p2on);
+  server.on("/p2off",p2off);
+
+  server.on("/p3on",p3on);
+  server.on("/p3off",p3off);
+
+  server.on("/p4on",p4on);
+  server.on("/p4off",p4off);
+
+  server.on("/update",HTTP_POST,handleUpdate,handleUpload);
+
+  server.begin();
+}
+
+// ===== LOOP =====
+void loop(){
+  server.handleClient();
+}
