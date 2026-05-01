@@ -6,41 +6,33 @@
 WebServer server(80);
 
 // WiFi
-const char* ssid = "ESP_TEST";
+const char* ssid = "ESP_MOTOR";
 const char* password = "12345678";
 
-// Pins
-int P1 = 8;   // D9
-int P2 = 9;   // D10
-int P3 = 5;   // D4
-int P4 = 6;   // D5
+// MOTOR PINS
+int M1 = 8;  // D9
+int M2 = 9;  // D10
+int M3 = 5;  // D4
+int M4 = 6;  // D5
+
+// SPEED CONTROL
+int targetSpeed = 0;
+int currentSpeed = 0;
 
 // ===== HTML =====
 String page = R"====(
 <!DOCTYPE html>
 <html>
 <body style="text-align:center;">
-<h2>PIN TEST</h2>
+<h2>4 Motor Test</h2>
 
-<h3>D9</h3>
-<button onclick="fetch('/p1on')">ON</button>
-<button onclick="fetch('/p1off')">OFF</button>
-
-<h3>D10</h3>
-<button onclick="fetch('/p2on')">ON</button>
-<button onclick="fetch('/p2off')">OFF</button>
-
-<h3>D4</h3>
-<button onclick="fetch('/p3on')">ON</button>
-<button onclick="fetch('/p3off')">OFF</button>
-
-<h3>D5</h3>
-<button onclick="fetch('/p4on')">ON</button>
-<button onclick="fetch('/p4off')">OFF</button>
+<button onclick="fetch('/low')">LOW</button>
+<button onclick="fetch('/mid')">MID</button>
+<button onclick="fetch('/high')">HIGH</button>
+<button onclick="fetch('/off')">OFF</button>
 
 <hr>
 
-<h3>OTA Upload</h3>
 <form method='POST' action='/update' enctype='multipart/form-data'>
 <input type='file' name='update'>
 <input type='submit' value='Upload'>
@@ -50,26 +42,15 @@ String page = R"====(
 </html>
 )====";
 
-// ===== HANDLERS =====
+// ===== WEB =====
 void handleRoot(){ server.send(200,"text/html",page); }
 
-// P1
-void p1on(){ digitalWrite(P1,HIGH); server.send(200,"text/plain","P1 ON"); }
-void p1off(){ digitalWrite(P1,LOW); server.send(200,"text/plain","P1 OFF"); }
+void low(){ targetSpeed = 80; server.send(200,"text/plain","LOW"); }
+void mid(){ targetSpeed = 150; server.send(200,"text/plain","MID"); }
+void high(){ targetSpeed = 255; server.send(200,"text/plain","HIGH"); }
+void off(){ targetSpeed = 0; server.send(200,"text/plain","OFF"); }
 
-// P2
-void p2on(){ digitalWrite(P2,HIGH); server.send(200,"text/plain","P2 ON"); }
-void p2off(){ digitalWrite(P2,LOW); server.send(200,"text/plain","P2 OFF"); }
-
-// P3
-void p3on(){ digitalWrite(P3,HIGH); server.send(200,"text/plain","P3 ON"); }
-void p3off(){ digitalWrite(P3,LOW); server.send(200,"text/plain","P3 OFF"); }
-
-// P4
-void p4on(){ digitalWrite(P4,HIGH); server.send(200,"text/plain","P4 ON"); }
-void p4off(){ digitalWrite(P4,LOW); server.send(200,"text/plain","P4 OFF"); }
-
-// OTA
+// ===== OTA =====
 void handleUpdate(){
   server.send(200,"text/plain",Update.hasError()?"FAIL":"OK");
   delay(1000);
@@ -94,27 +75,24 @@ void handleUpload(){
 void setup(){
   Serial.begin(115200);
 
-  pinMode(P1,OUTPUT);
-  pinMode(P2,OUTPUT);
-  pinMode(P3,OUTPUT);
-  pinMode(P4,OUTPUT);
+  // PWM setup
+  ledcAttach(M1, 20000, 8);
+  ledcAttach(M2, 20000, 8);
+  ledcAttach(M3, 20000, 8);
+  ledcAttach(M4, 20000, 8);
 
+  // WiFi
+  WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid,password);
 
+  Serial.println(WiFi.softAPIP());
+
+  // Routes
   server.on("/",handleRoot);
-
-  server.on("/p1on",p1on);
-  server.on("/p1off",p1off);
-
-  server.on("/p2on",p2on);
-  server.on("/p2off",p2off);
-
-  server.on("/p3on",p3on);
-  server.on("/p3off",p3off);
-
-  server.on("/p4on",p4on);
-  server.on("/p4off",p4off);
-
+  server.on("/low",low);
+  server.on("/mid",mid);
+  server.on("/high",high);
+  server.on("/off",off);
   server.on("/update",HTTP_POST,handleUpdate,handleUpload);
 
   server.begin();
@@ -123,4 +101,20 @@ void setup(){
 // ===== LOOP =====
 void loop(){
   server.handleClient();
+
+  // ===== RAMP LOGIC =====
+  if (currentSpeed < targetSpeed) {
+    currentSpeed += 2;   // smooth increase
+  }
+  else if (currentSpeed > targetSpeed) {
+    currentSpeed -= 2;   // smooth decrease
+  }
+
+  // ===== WRITE TO MOTORS =====
+  ledcWrite(M1, currentSpeed);
+  ledcWrite(M2, currentSpeed);
+  ledcWrite(M3, currentSpeed);
+  ledcWrite(M4, currentSpeed);
+
+  delay(10); // controls ramp speed
 }
