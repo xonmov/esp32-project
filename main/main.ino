@@ -20,17 +20,22 @@ int targetSpeed = 0;
 int currentSpeed = 0;
 
 // ===== SAFE SETTINGS =====
-int minStart = 40;     // minimum spin speed
-int maxLimit = 180;    // max safe speed (avoid reboot)
-int rampStep = 1;      // slow ramp
-int rampDelay = 20;    // delay for smoothness
+int minStart = 40;
+int maxLimit = 180;
+int rampStep = 1;
+int rampDelay = 20;
 
-// ===== HTML PAGE =====
+// ===== SEQUENTIAL START =====
+int startStage = 0;
+unsigned long lastStageTime = 0;
+int stageDelay = 400; // time between motors
+
+// ===== HTML =====
 String page = R"====(
 <!DOCTYPE html>
 <html>
 <body style="text-align:center;">
-<h2>4 Motor Test - SAFE MODE</h2>
+<h2>4 Motor Sequential Start</h2>
 
 <button onclick="fetch('/low')">LOW</button>
 <button onclick="fetch('/mid')">MID</button>
@@ -48,13 +53,19 @@ String page = R"====(
 </html>
 )====";
 
-// ===== WEB HANDLERS =====
+// ===== WEB =====
 void handleRoot(){ server.send(200,"text/html",page); }
 
-void low(){ targetSpeed = 70; server.send(200,"text/plain","LOW"); }
-void mid(){ targetSpeed = 120; server.send(200,"text/plain","MID"); }
-void high(){ targetSpeed = 160; server.send(200,"text/plain","HIGH"); }
-void off(){ targetSpeed = 0; server.send(200,"text/plain","OFF"); }
+void low(){ targetSpeed = 70; startStage = 1; server.send(200,"text/plain","LOW"); }
+void mid(){ targetSpeed = 120; startStage = 1; server.send(200,"text/plain","MID"); }
+void high(){ targetSpeed = 160; startStage = 1; server.send(200,"text/plain","HIGH"); }
+
+void off(){
+  targetSpeed = 0;
+  startStage = 0;
+  currentSpeed = 0;
+  server.send(200,"text/plain","OFF");
+}
 
 // ===== OTA =====
 void handleUpdate(){
@@ -81,19 +92,16 @@ void handleUpload(){
 void setup(){
   Serial.begin(115200);
 
-  // PWM setup (ESP32-S3 new style)
   ledcAttach(M1, 20000, 8);
   ledcAttach(M2, 20000, 8);
   ledcAttach(M3, 20000, 8);
   ledcAttach(M4, 20000, 8);
 
-  // WiFi AP
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid,password);
 
   Serial.println(WiFi.softAPIP());
 
-  // Routes
   server.on("/",handleRoot);
   server.on("/low",low);
   server.on("/mid",mid);
@@ -108,27 +116,39 @@ void setup(){
 void loop(){
   server.handleClient();
 
-  // ===== LIMIT TARGET =====
   int safeTarget = constrain(targetSpeed, 0, maxLimit);
 
-  // ===== SOFT START =====
-  if (currentSpeed == 0 && safeTarget > 0) {
+  // ===== SEQUENTIAL START =====
+  if (startStage > 0 && currentSpeed == 0) {
     currentSpeed = minStart;
+    lastStageTime = millis();
   }
 
-  // ===== SLOW RAMP =====
-  if (currentSpeed < safeTarget) {
-    currentSpeed += rampStep;
-  }
-  else if (currentSpeed > safeTarget) {
-    currentSpeed -= rampStep;
+  // move to next motor step-by-step
+  if (startStage > 0 && millis() - lastStageTime > stageDelay) {
+    startStage++;
+    lastStageTime = millis();
   }
 
-  // ===== WRITE TO MOTORS =====
-  ledcWrite(M1, currentSpeed);
-  ledcWrite(M2, currentSpeed);
-  ledcWrite(M3, currentSpeed);
-  ledcWrite(M4, currentSpeed);
+  // ===== MOTOR OUTPUT =====
+  int s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+
+  if (startStage >= 1) s1 = currentSpeed;
+  if (startStage >= 2) s2 = currentSpeed;
+  if (startStage >= 3) s3 = currentSpeed;
+  if (startStage >= 4) s4 = currentSpeed;
+
+  // ===== RAMP AFTER ALL STARTED =====
+  if (startStage >= 4) {
+    if (currentSpeed < safeTarget) currentSpeed += rampStep;
+    else if (currentSpeed > safeTarget) currentSpeed -= rampStep;
+  }
+
+  // ===== WRITE =====
+  ledcWrite(M1, s1);
+  ledcWrite(M2, s2);
+  ledcWrite(M3, s3);
+  ledcWrite(M4, s4);
 
   delay(rampDelay);
 }
