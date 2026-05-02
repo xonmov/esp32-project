@@ -15,7 +15,9 @@ int M2 = 9;  // D10
 int M3 = 5;  // D4
 int M4 = 6;  // D5
 
-// ===== SPEED CONTROL =====
+// ===== CONTROL =====
+bool motorsOn = false;
+int throttlePercent = 0;   // 0–100
 int targetSpeed = 0;
 int currentSpeed = 0;
 
@@ -28,19 +30,33 @@ int rampDelay = 20;
 // ===== SEQUENTIAL START =====
 int startStage = 0;
 unsigned long lastStageTime = 0;
-int stageDelay = 400; // time between motors
+int stageDelay = 400;
 
 // ===== HTML =====
 String page = R"====(
 <!DOCTYPE html>
 <html>
-<body style="text-align:center;">
-<h2>4 Motor Sequential Start</h2>
+<body style="text-align:center;font-family:sans-serif;">
+<h2>Drone Motor Control</h2>
 
-<button onclick="fetch('/low')">LOW</button>
-<button onclick="fetch('/mid')">MID</button>
-<button onclick="fetch('/high')">HIGH</button>
-<button onclick="fetch('/off')">OFF</button>
+<button onclick="toggle()">ON / OFF</button>
+
+<br><br>
+
+<input type="range" min="0" max="100" value="0" id="slider"
+oninput="setThrottle(this.value)">
+<p>Throttle: <span id="val">0</span>%</p>
+
+<script>
+function toggle(){
+  fetch('/toggle');
+}
+
+function setThrottle(v){
+  document.getElementById('val').innerText = v;
+  fetch('/throttle?val=' + v);
+}
+</script>
 
 <hr>
 
@@ -56,15 +72,26 @@ String page = R"====(
 // ===== WEB =====
 void handleRoot(){ server.send(200,"text/html",page); }
 
-void low(){ targetSpeed = 70; startStage = 1; server.send(200,"text/plain","LOW"); }
-void mid(){ targetSpeed = 120; startStage = 1; server.send(200,"text/plain","MID"); }
-void high(){ targetSpeed = 160; startStage = 1; server.send(200,"text/plain","HIGH"); }
+void toggle(){
+  motorsOn = !motorsOn;
 
-void off(){
-  targetSpeed = 0;
-  startStage = 0;
-  currentSpeed = 0;
-  server.send(200,"text/plain","OFF");
+  if (motorsOn) {
+    startStage = 1;
+    currentSpeed = 0;
+  } else {
+    startStage = 0;
+    currentSpeed = 0;
+    targetSpeed = 0;
+  }
+
+  server.send(200,"text/plain", motorsOn ? "ON" : "OFF");
+}
+
+void setThrottle(){
+  if (server.hasArg("val")) {
+    throttlePercent = server.arg("val").toInt();
+  }
+  server.send(200,"text/plain","OK");
 }
 
 // ===== OTA =====
@@ -103,10 +130,8 @@ void setup(){
   Serial.println(WiFi.softAPIP());
 
   server.on("/",handleRoot);
-  server.on("/low",low);
-  server.on("/mid",mid);
-  server.on("/high",high);
-  server.on("/off",off);
+  server.on("/toggle",toggle);
+  server.on("/throttle",setThrottle);
   server.on("/update",HTTP_POST,handleUpdate,handleUpload);
 
   server.begin();
@@ -116,16 +141,16 @@ void setup(){
 void loop(){
   server.handleClient();
 
-  int safeTarget = constrain(targetSpeed, 0, maxLimit);
+  // convert throttle % → PWM
+  targetSpeed = map(throttlePercent, 0, 100, 0, maxLimit);
 
   // ===== SEQUENTIAL START =====
-  if (startStage > 0 && currentSpeed == 0) {
+  if (motorsOn && startStage > 0 && currentSpeed == 0) {
     currentSpeed = minStart;
     lastStageTime = millis();
   }
 
-  // move to next motor step-by-step
-  if (startStage > 0 && millis() - lastStageTime > stageDelay) {
+  if (motorsOn && startStage > 0 && millis() - lastStageTime > stageDelay) {
     startStage++;
     lastStageTime = millis();
   }
@@ -133,15 +158,17 @@ void loop(){
   // ===== MOTOR OUTPUT =====
   int s1 = 0, s2 = 0, s3 = 0, s4 = 0;
 
-  if (startStage >= 1) s1 = currentSpeed;
-  if (startStage >= 2) s2 = currentSpeed;
-  if (startStage >= 3) s3 = currentSpeed;
-  if (startStage >= 4) s4 = currentSpeed;
+  if (motorsOn) {
+    if (startStage >= 1) s1 = currentSpeed;
+    if (startStage >= 2) s2 = currentSpeed;
+    if (startStage >= 3) s3 = currentSpeed;
+    if (startStage >= 4) s4 = currentSpeed;
+  }
 
-  // ===== RAMP AFTER ALL STARTED =====
-  if (startStage >= 4) {
-    if (currentSpeed < safeTarget) currentSpeed += rampStep;
-    else if (currentSpeed > safeTarget) currentSpeed -= rampStep;
+  // ===== RAMP =====
+  if (motorsOn && startStage >= 4) {
+    if (currentSpeed < targetSpeed) currentSpeed += rampStep;
+    else if (currentSpeed > targetSpeed) currentSpeed -= rampStep;
   }
 
   // ===== WRITE =====
