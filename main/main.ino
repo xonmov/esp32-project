@@ -5,26 +5,32 @@
 
 WebServer server(80);
 
-// WiFi
+// ===== WiFi =====
 const char* ssid = "ESP_MOTOR";
 const char* password = "12345678";
 
-// MOTOR PINS
+// ===== MOTOR PINS =====
 int M1 = 8;  // D9
 int M2 = 9;  // D10
 int M3 = 5;  // D4
 int M4 = 6;  // D5
 
-// SPEED CONTROL
+// ===== SPEED CONTROL =====
 int targetSpeed = 0;
 int currentSpeed = 0;
 
-// ===== HTML =====
+// ===== SAFE SETTINGS =====
+int minStart = 40;     // minimum spin speed
+int maxLimit = 180;    // max safe speed (avoid reboot)
+int rampStep = 1;      // slow ramp
+int rampDelay = 20;    // delay for smoothness
+
+// ===== HTML PAGE =====
 String page = R"====(
 <!DOCTYPE html>
 <html>
 <body style="text-align:center;">
-<h2>4 Motor Test</h2>
+<h2>4 Motor Test - SAFE MODE</h2>
 
 <button onclick="fetch('/low')">LOW</button>
 <button onclick="fetch('/mid')">MID</button>
@@ -42,12 +48,12 @@ String page = R"====(
 </html>
 )====";
 
-// ===== WEB =====
+// ===== WEB HANDLERS =====
 void handleRoot(){ server.send(200,"text/html",page); }
 
-void low(){ targetSpeed = 80; server.send(200,"text/plain","LOW"); }
-void mid(){ targetSpeed = 150; server.send(200,"text/plain","MID"); }
-void high(){ targetSpeed = 255; server.send(200,"text/plain","HIGH"); }
+void low(){ targetSpeed = 70; server.send(200,"text/plain","LOW"); }
+void mid(){ targetSpeed = 120; server.send(200,"text/plain","MID"); }
+void high(){ targetSpeed = 160; server.send(200,"text/plain","HIGH"); }
 void off(){ targetSpeed = 0; server.send(200,"text/plain","OFF"); }
 
 // ===== OTA =====
@@ -75,13 +81,13 @@ void handleUpload(){
 void setup(){
   Serial.begin(115200);
 
-  // PWM setup
+  // PWM setup (ESP32-S3 new style)
   ledcAttach(M1, 20000, 8);
   ledcAttach(M2, 20000, 8);
   ledcAttach(M3, 20000, 8);
   ledcAttach(M4, 20000, 8);
 
-  // WiFi
+  // WiFi AP
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid,password);
 
@@ -102,12 +108,20 @@ void setup(){
 void loop(){
   server.handleClient();
 
-  // ===== RAMP LOGIC =====
-  if (currentSpeed < targetSpeed) {
-    currentSpeed += 2;   // smooth increase
+  // ===== LIMIT TARGET =====
+  int safeTarget = constrain(targetSpeed, 0, maxLimit);
+
+  // ===== SOFT START =====
+  if (currentSpeed == 0 && safeTarget > 0) {
+    currentSpeed = minStart;
   }
-  else if (currentSpeed > targetSpeed) {
-    currentSpeed -= 2;   // smooth decrease
+
+  // ===== SLOW RAMP =====
+  if (currentSpeed < safeTarget) {
+    currentSpeed += rampStep;
+  }
+  else if (currentSpeed > safeTarget) {
+    currentSpeed -= rampStep;
   }
 
   // ===== WRITE TO MOTORS =====
@@ -116,5 +130,5 @@ void loop(){
   ledcWrite(M3, currentSpeed);
   ledcWrite(M4, currentSpeed);
 
-  delay(10); // controls ramp speed
+  delay(rampDelay);
 }
