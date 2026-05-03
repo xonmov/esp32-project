@@ -17,12 +17,12 @@ int M4 = 6;  // D5
 
 // ===== CONTROL =====
 bool motorsOn = false;
-int throttlePercent = 0;   // 0–100
+int throttlePercent = 0;
 int targetSpeed = 0;
 int currentSpeed = 0;
 
 // ===== SAFE SETTINGS =====
-int minStart = 40;
+int minStart = 50;     // slightly higher to avoid twitch
 int maxLimit = 180;
 int rampStep = 1;
 int rampDelay = 20;
@@ -75,10 +75,7 @@ void handleRoot(){ server.send(200,"text/html",page); }
 void toggle(){
   motorsOn = !motorsOn;
 
-  if (motorsOn) {
-    startStage = 1;
-    currentSpeed = 0;
-  } else {
+  if (!motorsOn) {
     startStage = 0;
     currentSpeed = 0;
     targetSpeed = 0;
@@ -144,21 +141,30 @@ void loop(){
   // convert throttle % → PWM
   targetSpeed = map(throttlePercent, 0, 100, 0, maxLimit);
 
-  // ===== SEQUENTIAL START =====
-  if (motorsOn && startStage > 0 && currentSpeed == 0) {
-    currentSpeed = minStart;
-    lastStageTime = millis();
-  }
+  // ===== START ONLY IF THROTTLE > 0 =====
+  if (motorsOn && targetSpeed > 0) {
 
-  if (motorsOn && startStage > 0 && millis() - lastStageTime > stageDelay) {
-    startStage++;
-    lastStageTime = millis();
+    if (startStage == 0) {
+      startStage = 1;
+      currentSpeed = minStart;
+      lastStageTime = millis();
+    }
+
+    if (millis() - lastStageTime > stageDelay) {
+      startStage++;
+      lastStageTime = millis();
+    }
+
+  } else {
+    // stop completely if throttle = 0
+    startStage = 0;
+    currentSpeed = 0;
   }
 
   // ===== MOTOR OUTPUT =====
   int s1 = 0, s2 = 0, s3 = 0, s4 = 0;
 
-  if (motorsOn) {
+  if (motorsOn && targetSpeed > 0) {
     if (startStage >= 1) s1 = currentSpeed;
     if (startStage >= 2) s2 = currentSpeed;
     if (startStage >= 3) s3 = currentSpeed;
