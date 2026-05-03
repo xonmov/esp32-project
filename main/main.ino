@@ -22,9 +22,9 @@ int targetSpeed = 0;
 int currentSpeed = 0;
 
 // ===== SAFE SETTINGS =====
-int minStart = 30;
+int minStart = 20;
 int maxLimit = 180;
-int rampStep = 1;
+int rampStep = 0.5;
 int rampDelay = 20;
 
 // ===== SEQUENTIAL START =====
