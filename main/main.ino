@@ -2,8 +2,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Update.h>
-#include "soc/soc.h"
-#include "soc/rtc_cntl_reg.h"
+#include "esp_system.h"
 
 WebServer server(80);
 
@@ -118,7 +117,23 @@ void handleUpload(){
 // ===== SETUP =====
 void setup(){
   Serial.begin(115200);
-WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+delay(500);
+
+esp_reset_reason_t reason = esp_reset_reason();
+
+Serial.print("Reset reason: ");
+
+switch(reason) {
+  case ESP_RST_POWERON: Serial.println("Power ON"); break;
+  case ESP_RST_BROWNOUT: Serial.println("Brownout (LOW VOLTAGE)"); break;
+  case ESP_RST_SW: Serial.println("Software reset"); break;
+  case ESP_RST_PANIC: Serial.println("Crash / Panic"); break;
+  case ESP_RST_INT_WDT: Serial.println("Watchdog reset"); break;
+  case ESP_RST_TASK_WDT: Serial.println("Task Watchdog"); break;
+  default: Serial.println("Unknown"); break;
+}
+
+
 
   ledcAttach(M1, 20000, 8);
   ledcAttach(M2, 20000, 8);
