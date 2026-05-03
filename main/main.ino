@@ -10,27 +10,28 @@ const char* ssid = "ESP_MOTOR";
 const char* password = "12345678";
 
 // ===== MOTOR PINS =====
-int M1 = 8;  // D9
-int M2 = 9;  // D10
-int M3 = 5;  // D4
-int M4 = 6;  // D5
+int M1 = 8;
+int M2 = 9;
+int M3 = 5;
+int M4 = 6;
 
 // ===== CONTROL =====
 bool motorsOn = false;
-int throttlePercent = 0;   // 0–100
-int targetSpeed = 0;
+int throttlePercent = 0;
+
 int currentSpeed = 0;
+int targetSpeed = 0;
 
-// ===== SAFE SETTINGS =====
-int minStart = 20;
+// ===== SETTINGS =====
+int idleSpeed = 20;     // adjust if motors don't spin
 int maxLimit = 180;
-int rampStep = 0.5;
-int rampDelay = 20;
+int rampStep = 1;
+int rampDelay = 40;
 
-// ===== SEQUENTIAL START =====
+// ===== SEQUENTIAL =====
 int startStage = 0;
 unsigned long lastStageTime = 0;
-int stageDelay = 400;
+int stageDelay = 800;
 
 // ===== HTML =====
 String page = R"====(
@@ -39,19 +40,15 @@ String page = R"====(
 <body style="text-align:center;font-family:sans-serif;">
 <h2>Drone Motor Control</h2>
 
-<button onclick="toggle()">ON / OFF</button>
+<button onclick="fetch('/toggle')">ON / OFF</button>
 
 <br><br>
 
-<input type="range" min="0" max="100" value="0" id="slider"
+<input type="range" min="0" max="100" value="0"
 oninput="setThrottle(this.value)">
 <p>Throttle: <span id="val">0</span>%</p>
 
 <script>
-function toggle(){
-  fetch('/toggle');
-}
-
 function setThrottle(v){
   document.getElementById('val').innerText = v;
   fetch('/throttle?val=' + v);
@@ -60,6 +57,7 @@ function setThrottle(v){
 
 <hr>
 
+<h3>OTA Update</h3>
 <form method='POST' action='/update' enctype='multipart/form-data'>
 <input type='file' name='update'>
 <input type='submit' value='Upload'>
@@ -77,11 +75,11 @@ void toggle(){
 
   if (motorsOn) {
     startStage = 1;
-    currentSpeed = 0;
+    currentSpeed = idleSpeed;
+    lastStageTime = millis();
   } else {
     startStage = 0;
     currentSpeed = 0;
-    targetSpeed = 0;
   }
 
   server.send(200,"text/plain", motorsOn ? "ON" : "OFF");
@@ -96,7 +94,7 @@ void setThrottle(){
 
 // ===== OTA =====
 void handleUpdate(){
-  server.send(200,"text/plain",Update.hasError()?"FAIL":"OK");
+  server.send(200,"text/plain",Update.hasError()?"FAIL":"SUCCESS");
   delay(1000);
   ESP.restart();
 }
@@ -104,13 +102,13 @@ void handleUpdate(){
 void handleUpload(){
   HTTPUpload& upload = server.upload();
 
-  if(upload.status==UPLOAD_FILE_START){
-    Update.begin();
+  if(upload.status == UPLOAD_FILE_START){
+    Update.begin(UPDATE_SIZE_UNKNOWN);
   }
-  else if(upload.status==UPLOAD_FILE_WRITE){
+  else if(upload.status == UPLOAD_FILE_WRITE){
     Update.write(upload.buf, upload.currentSize);
   }
-  else if(upload.status==UPLOAD_FILE_END){
+  else if(upload.status == UPLOAD_FILE_END){
     Update.end(true);
   }
 }
@@ -127,12 +125,13 @@ void setup(){
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid,password);
 
+  Serial.print("IP: ");
   Serial.println(WiFi.softAPIP());
 
   server.on("/",handleRoot);
   server.on("/toggle",toggle);
   server.on("/throttle",setThrottle);
-  server.on("/update",HTTP_POST,handleUpdate,handleUpload);
+  server.on("/update", HTTP_POST, handleUpdate, handleUpload);
 
   server.begin();
 }
@@ -141,37 +140,34 @@ void setup(){
 void loop(){
   server.handleClient();
 
-  // convert throttle % → PWM
-  targetSpeed = map(throttlePercent, 0, 100, 0, maxLimit);
+  // ===== TARGET SPEED =====
+  int throttleSpeed = map(throttlePercent, 0, 100, 0, maxLimit);
+  targetSpeed = idleSpeed + throttleSpeed;
 
-  // ===== SEQUENTIAL START =====
-  if (motorsOn && startStage > 0 && currentSpeed == 0) {
-    currentSpeed = minStart;
-    lastStageTime = millis();
+  if (!motorsOn) {
+    ledcWrite(M1, 0);
+    ledcWrite(M2, 0);
+    ledcWrite(M3, 0);
+    ledcWrite(M4, 0);
+    return;
   }
 
-  if (motorsOn && startStage > 0 && millis() - lastStageTime > stageDelay) {
+  // ===== SEQUENTIAL START =====
+  if (millis() - lastStageTime > stageDelay && startStage < 4) {
     startStage++;
     lastStageTime = millis();
   }
 
-  // ===== MOTOR OUTPUT =====
-  int s1 = 0, s2 = 0, s3 = 0, s4 = 0;
-
-  if (motorsOn) {
-    if (startStage >= 1) s1 = currentSpeed;
-    if (startStage >= 2) s2 = currentSpeed;
-    if (startStage >= 3) s3 = currentSpeed;
-    if (startStage >= 4) s4 = currentSpeed;
-  }
-
   // ===== RAMP =====
-  if (motorsOn && startStage >= 4) {
-    if (currentSpeed < targetSpeed) currentSpeed += rampStep;
-    else if (currentSpeed > targetSpeed) currentSpeed -= rampStep;
-  }
+  if (currentSpeed < targetSpeed) currentSpeed += rampStep;
+  else if (currentSpeed > targetSpeed) currentSpeed -= rampStep;
 
-  // ===== WRITE =====
+  // ===== OUTPUT =====
+  int s1 = (startStage >= 1) ? currentSpeed : 0;
+  int s2 = (startStage >= 2) ? currentSpeed : 0;
+  int s3 = (startStage >= 3) ? currentSpeed : 0;
+  int s4 = (startStage >= 4) ? currentSpeed : 0;
+
   ledcWrite(M1, s1);
   ledcWrite(M2, s2);
   ledcWrite(M3, s3);
