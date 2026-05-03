@@ -2,6 +2,8 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Update.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 WebServer server(80);
 
