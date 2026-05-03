@@ -116,6 +116,7 @@ void handleUpload(){
 // ===== SETUP =====
 void setup(){
   Serial.begin(115200);
+WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
   ledcAttach(M1, 20000, 8);
   ledcAttach(M2, 20000, 8);
