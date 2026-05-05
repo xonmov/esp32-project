@@ -2,19 +2,44 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Update.h>
-#include "esp_system.h"
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+
+// ===== WIFI =====
+const char* ssid = "ESP_DRONE";
+const char* password = "12345678";
 
 WebServer server(80);
 
-// ===== WiFi =====
-const char* ssid = "ESP_MOTOR";
-const char* password = "12345678";
+// ===== MPU =====
+Adafruit_MPU6050 mpu;
+
+// ===== ANGLES =====
+float pitch = 0, roll = 0;
+float pitch_offset = 0, roll_offset = 0;
+
+// ===== GYRO OFFSET =====
+float gx_offset = 0, gy_offset = 0;
+
+// ===== TIME =====
+unsigned long prevTime = 0;
+
+// ===== FILTER =====
+float alpha = 0.98;
+
+// ===== PID =====
+float Kp = 2.2;
+float Kd = 0.6;
+
+float pitch_last_error = 0;
+float roll_last_error = 0;
 
 // ===== MOTOR PINS =====
-int M1 = 8;
-int M2 = 9;
-int M3 = 5;
-int M4 = 6;
+int M1 = 8;  // FRONT LEFT (CW)
+int M2 = 9;  // FRONT RIGHT (CCW)
+int M3 = 5;  // BACK RIGHT (CCW)
+int M4 = 6;  // BACK LEFT (CW)
 
 // ===== CONTROL =====
 bool motorsOn = false;
@@ -23,25 +48,17 @@ int throttlePercent = 0;
 int currentSpeed = 0;
 int targetSpeed = 0;
 
-// ===== SETTINGS =====
-int idleSpeed = 20;     // adjust if motors don't spin
+int idleSpeed = 55;
 int maxLimit = 180;
-int rampStep = 1;
-int rampDelay = 40;
 
-// ===== SEQUENTIAL =====
-int startStage = 0;
-unsigned long lastStageTime = 0;
-int stageDelay = 800;
-
-// ===== HTML =====
+// ===== WEB PAGE =====
 String page = R"====(
 <!DOCTYPE html>
 <html>
 <body style="text-align:center;font-family:sans-serif;">
-<h2>Drone Motor Control</h2>
+<h2>Drone Control</h2>
 
-<button onclick="fetch('/toggle')">ON / OFF</button>
+<button onclick="fetch('/toggle')">ARM / DISARM</button>
 
 <br><br>
 
@@ -74,16 +91,9 @@ void handleRoot(){ server.send(200,"text/html",page); }
 void toggle(){
   motorsOn = !motorsOn;
 
-  if (motorsOn) {
-    startStage = 1;
-    currentSpeed = idleSpeed;
-    lastStageTime = millis();
-  } else {
-    startStage = 0;
-    currentSpeed = 0;
-  }
+  if (!motorsOn) currentSpeed = 0;
 
-  server.send(200,"text/plain", motorsOn ? "ON" : "OFF");
+  server.send(200,"text/plain", motorsOn ? "ARMED" : "DISARMED");
 }
 
 void setThrottle(){
@@ -115,52 +125,78 @@ void handleUpload(){
 }
 
 // ===== SETUP =====
-void setup(){
+void setup() {
   Serial.begin(115200);
-delay(500);
 
-esp_reset_reason_t reason = esp_reset_reason();
+  // WiFi AP
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ssid, password);
+  Serial.println(WiFi.softAPIP());
 
-Serial.print("Reset reason: ");
+  server.on("/", handleRoot);
+  server.on("/toggle", toggle);
+  server.on("/throttle", setThrottle);
+  server.on("/update", HTTP_POST, handleUpdate, handleUpload);
+  server.begin();
 
-switch(reason) {
-  case ESP_RST_POWERON: Serial.println("Power ON"); break;
-  case ESP_RST_BROWNOUT: Serial.println("Brownout (LOW VOLTAGE)"); break;
-  case ESP_RST_SW: Serial.println("Software reset"); break;
-  case ESP_RST_PANIC: Serial.println("Crash / Panic"); break;
-  case ESP_RST_INT_WDT: Serial.println("Watchdog reset"); break;
-  case ESP_RST_TASK_WDT: Serial.println("Task Watchdog"); break;
-  default: Serial.println("Unknown"); break;
-}
+  // ===== MPU =====
+  Wire.begin(D3, D2);
 
+  if (!mpu.begin(0x68, &Wire)) {
+    Serial.println("MPU FAIL");
+    while (1);
+  }
 
+  delay(2000);
 
+  // ===== GYRO CALIBRATION =====
+  Serial.println("Keep STILL...");
+  for (int i = 0; i < 500; i++) {
+    sensors_event_t a, g, t;
+    mpu.getEvent(&a, &g, &t);
+    gx_offset += g.gyro.x;
+    gy_offset += g.gyro.y;
+    delay(5);
+  }
+  gx_offset /= 500;
+  gy_offset /= 500;
+
+  // ===== INITIAL ANGLE =====
+  sensors_event_t a, g, t;
+  mpu.getEvent(&a, &g, &t);
+
+  float ax = a.acceleration.x;
+  float ay = a.acceleration.y;
+  float az = a.acceleration.z;
+
+  pitch = atan2(-ax, sqrt(ay*ay + az*az)) * 180 / PI;
+  roll  = atan2(ay, az) * 180 / PI;
+
+  pitch_offset = pitch;
+  roll_offset  = roll;
+
+  // ===== PWM =====
   ledcAttach(M1, 20000, 8);
   ledcAttach(M2, 20000, 8);
   ledcAttach(M3, 20000, 8);
   ledcAttach(M4, 20000, 8);
 
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid,password);
-
-  Serial.print("IP: ");
-  Serial.println(WiFi.softAPIP());
-
-  server.on("/",handleRoot);
-  server.on("/toggle",toggle);
-  server.on("/throttle",setThrottle);
-  server.on("/update", HTTP_POST, handleUpdate, handleUpload);
-
-  server.begin();
+  prevTime = millis();
 }
 
 // ===== LOOP =====
-void loop(){
+void loop() {
+
   server.handleClient();
 
-  // ===== TARGET SPEED =====
   int throttleSpeed = map(throttlePercent, 0, 100, 0, maxLimit);
-  targetSpeed = idleSpeed + throttleSpeed;
+  targetSpeed = throttleSpeed;
+
+  // Smooth ramp
+  if (currentSpeed < targetSpeed) currentSpeed++;
+  else if (currentSpeed > targetSpeed) currentSpeed--;
+
+  int baseThrottle = idleSpeed + currentSpeed;
 
   if (!motorsOn) {
     ledcWrite(M1, 0);
@@ -170,26 +206,83 @@ void loop(){
     return;
   }
 
-  // ===== SEQUENTIAL START =====
-  if (millis() - lastStageTime > stageDelay && startStage < 4) {
-    startStage++;
-    lastStageTime = millis();
-  }
+  // ===== MPU READ =====
+  sensors_event_t a, g, t;
+  mpu.getEvent(&a, &g, &t);
 
-  // ===== RAMP =====
-  if (currentSpeed < targetSpeed) currentSpeed += rampStep;
-  else if (currentSpeed > targetSpeed) currentSpeed -= rampStep;
+  unsigned long now = millis();
+  float dt = (now - prevTime) / 1000.0;
+  prevTime = now;
+  if (dt <= 0 || dt > 0.1) dt = 0.01;
 
-  // ===== OUTPUT =====
-  int s1 = (startStage >= 1) ? currentSpeed : 0;
-  int s2 = (startStage >= 2) ? currentSpeed : 0;
-  int s3 = (startStage >= 3) ? currentSpeed : 0;
-  int s4 = (startStage >= 4) ? currentSpeed : 0;
+  float gx = g.gyro.x - gx_offset;
+  float gy = g.gyro.y - gy_offset;
 
-  ledcWrite(M1, s1);
-  ledcWrite(M2, s2);
-  ledcWrite(M3, s3);
-  ledcWrite(M4, s4);
+  float gx_deg = gx * 180 / PI;
+  float gy_deg = gy * 180 / PI;
 
-  delay(rampDelay);
+  float pitchAcc = atan2(-a.acceleration.x, sqrt(a.acceleration.y*a.acceleration.y + a.acceleration.z*a.acceleration.z)) * 180 / PI;
+  float rollAcc  = atan2(a.acceleration.y, a.acceleration.z) * 180 / PI;
+
+  pitch = alpha * (pitch + gx_deg * dt) + (1 - alpha) * pitchAcc;
+  roll  = alpha * (roll  + gy_deg * dt) + (1 - alpha) * rollAcc;
+
+  pitch -= pitch_offset;
+  roll  -= roll_offset;
+
+  // ===== PID =====
+  float pitch_error = -pitch;
+  float roll_error  = -roll;
+
+  float pitch_derivative = (pitch_error - pitch_last_error) / dt;
+  float roll_derivative  = (roll_error - roll_last_error) / dt;
+
+  float pitch_output = Kp * pitch_error + Kd * pitch_derivative;
+  float roll_output  = Kp * roll_error  + Kd * roll_derivative;
+
+  pitch_output = constrain(pitch_output, -80, 80);
+  roll_output  = constrain(roll_output, -80, 80);
+
+  pitch_last_error = pitch_error;
+  roll_last_error  = roll_error;
+
+  // ===== MOTOR MIXING =====
+  int m1 = baseThrottle + pitch_output - roll_output;
+  int m2 = baseThrottle + pitch_output + roll_output;
+  int m3 = baseThrottle - pitch_output + roll_output;
+  int m4 = baseThrottle - pitch_output - roll_output;
+
+  m1 = constrain(m1, 0, 255);
+  m2 = constrain(m2, 0, 255);
+  m3 = constrain(m3, 0, 255);
+  m4 = constrain(m4, 0, 255);
+
+  ledcWrite(M1, m1);
+  ledcWrite(M2, m2);
+  ledcWrite(M3, m3);
+  ledcWrite(M4, m4);
+
+ // ===== DEBUG PRINT =====
+static unsigned long lastPrint = 0;
+
+if (millis() - lastPrint > 100) {   // print every 100ms (stable)
+  lastPrint = millis();
+
+  Serial.print("Pitch:");
+  Serial.print(pitch);
+  Serial.print(" PID:");
+  Serial.print(pitch_output);
+
+  Serial.print(" || Roll:");
+  Serial.print(roll);
+  Serial.print(" PID:");
+  Serial.print(roll_output);
+
+  Serial.print(" || M:");
+  Serial.print(m1); Serial.print(",");
+  Serial.print(m2); Serial.print(",");
+  Serial.print(m3); Serial.print(",");
+  Serial.println(m4);
+}
+  delay(5);
 }
