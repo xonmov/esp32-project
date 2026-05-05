@@ -48,8 +48,13 @@ int throttlePercent = 0;
 int currentSpeed = 0;
 int targetSpeed = 0;
 
-int idleSpeed = 55;
-int maxLimit = 180;
+int idleSpeed = 30;
+int maxLimit = 150;
+
+// ===== SEQUENTIAL START =====
+int startStage = 0;
+unsigned long lastStageTime = 0;
+int stageDelay = 700;
 
 // ===== WEB PAGE =====
 String page = R"====(
@@ -91,7 +96,14 @@ void handleRoot(){ server.send(200,"text/html",page); }
 void toggle(){
   motorsOn = !motorsOn;
 
-  if (!motorsOn) currentSpeed = 0;
+  if (motorsOn) {
+    startStage = 1;
+    currentSpeed = 0;
+    lastStageTime = millis();
+  } else {
+    startStage = 0;
+    currentSpeed = 0;
+  }
 
   server.send(200,"text/plain", motorsOn ? "ARMED" : "DISARMED");
 }
@@ -128,7 +140,6 @@ void handleUpload(){
 void setup() {
   Serial.begin(115200);
 
-  // WiFi AP
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
   Serial.println(WiFi.softAPIP());
@@ -144,6 +155,7 @@ void setup() {
 
   if (!mpu.begin(0x68, &Wire)) {
     Serial.println("MPU FAIL");
+   
   }
 
   delay(2000);
@@ -164,17 +176,13 @@ void setup() {
   sensors_event_t a, g, t;
   mpu.getEvent(&a, &g, &t);
 
-  float ax = a.acceleration.x;
-  float ay = a.acceleration.y;
-  float az = a.acceleration.z;
-
-  pitch = atan2(-ax, sqrt(ay*ay + az*az)) * 180 / PI;
-  roll  = atan2(ay, az) * 180 / PI;
+  pitch = atan2(-a.acceleration.x, sqrt(a.acceleration.y*a.acceleration.y + a.acceleration.z*a.acceleration.z)) * 180 / PI;
+  roll  = atan2(a.acceleration.y, a.acceleration.z) * 180 / PI;
 
   pitch_offset = pitch;
   roll_offset  = roll;
 
-  // ===== PWM =====
+  // PWM
   ledcAttach(M1, 20000, 8);
   ledcAttach(M2, 20000, 8);
   ledcAttach(M3, 20000, 8);
@@ -191,12 +199,6 @@ void loop() {
   int throttleSpeed = map(throttlePercent, 0, 100, 0, maxLimit);
   targetSpeed = throttleSpeed;
 
-  // Smooth ramp
-  if (currentSpeed < targetSpeed) currentSpeed++;
-  else if (currentSpeed > targetSpeed) currentSpeed--;
-
-  int baseThrottle = idleSpeed + currentSpeed;
-
   if (!motorsOn) {
     ledcWrite(M1, 0);
     ledcWrite(M2, 0);
@@ -205,7 +207,19 @@ void loop() {
     return;
   }
 
-  // ===== MPU READ =====
+  // ===== SEQUENTIAL START =====
+  if (millis() - lastStageTime > stageDelay && startStage < 4) {
+    startStage++;
+    lastStageTime = millis();
+  }
+
+  // ===== RAMP =====
+  if (currentSpeed < targetSpeed) currentSpeed++;
+  else if (currentSpeed > targetSpeed) currentSpeed--;
+
+  int baseThrottle = idleSpeed + currentSpeed;
+
+  // ===== MPU =====
   sensors_event_t a, g, t;
   mpu.getEvent(&a, &g, &t);
 
@@ -256,32 +270,38 @@ void loop() {
   m3 = constrain(m3, 0, 255);
   m4 = constrain(m4, 0, 255);
 
-  ledcWrite(M1, m1);
-  ledcWrite(M2, m2);
-  ledcWrite(M3, m3);
-  ledcWrite(M4, m4);
+  // ===== APPLY STAGES =====
+  int s1 = (startStage >= 1) ? m1 : 0;
+  int s2 = (startStage >= 2) ? m2 : 0;
+  int s3 = (startStage >= 3) ? m3 : 0;
+  int s4 = (startStage >= 4) ? m4 : 0;
 
- // ===== DEBUG PRINT =====
-static unsigned long lastPrint = 0;
+  ledcWrite(M1, s1);
+  ledcWrite(M2, s2);
+  ledcWrite(M3, s3);
+  ledcWrite(M4, s4);
 
-if (millis() - lastPrint > 100) {   // print every 100ms (stable)
-  lastPrint = millis();
+  // ===== DEBUG =====
+  static unsigned long lastPrint = 0;
+  if (millis() - lastPrint > 100) {
+    lastPrint = millis();
 
-  Serial.print("Pitch:");
-  Serial.print(pitch);
-  Serial.print(" PID:");
-  Serial.print(pitch_output);
+    Serial.print("P:");
+    Serial.print(pitch);
+    Serial.print(" PID:");
+    Serial.print(pitch_output);
 
-  Serial.print(" || Roll:");
-  Serial.print(roll);
-  Serial.print(" PID:");
-  Serial.print(roll_output);
+    Serial.print(" || R:");
+    Serial.print(roll);
+    Serial.print(" PID:");
+    Serial.print(roll_output);
 
-  Serial.print(" || M:");
-  Serial.print(m1); Serial.print(",");
-  Serial.print(m2); Serial.print(",");
-  Serial.print(m3); Serial.print(",");
-  Serial.println(m4);
-}
+    Serial.print(" || M:");
+    Serial.print(s1); Serial.print(",");
+    Serial.print(s2); Serial.print(",");
+    Serial.print(s3); Serial.print(",");
+    Serial.println(s4);
+  }
+
   delay(5);
 }
