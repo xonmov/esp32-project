@@ -144,7 +144,6 @@ void setup() {
 
   if (!mpu.begin(0x68, &Wire)) {
     Serial.println("MPU FAIL");
-    while (1);
   }
 
   delay(2000);
