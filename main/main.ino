@@ -9,7 +9,6 @@
 // ===== WIFI =====
 const char* ssid = "ESP_DRONE";
 const char* password = "12345678";
-
 WebServer server(80);
 
 // ===== MPU =====
@@ -29,32 +28,37 @@ unsigned long prevTime = 0;
 float alpha = 0.98;
 
 // ===== PID =====
-float Kp = 2.2;
-float Kd = 0.6;
+float Kp = 3.0;
+float Kd = 0.8;
 
 float pitch_last_error = 0;
 float roll_last_error = 0;
-
-// ===== MOTOR PINS =====
-int M1 = 8;  // FRONT LEFT (CW)
-int M2 = 9;  // FRONT RIGHT (CCW)
-int M3 = 5;  // BACK RIGHT (CCW)
-int M4 = 6;  // BACK LEFT (CW)
 
 // ===== CONTROL =====
 bool motorsOn = false;
 int throttlePercent = 0;
 
-int currentSpeed = 0;
-int targetSpeed = 0;
-
 int idleSpeed = 30;
-int maxLimit = 150;
+int maxLimit = 120;
+
+// ===== PID DELAY =====
+bool stabilizeReady = false;
+unsigned long armTime = 0;
 
 // ===== SEQUENTIAL START =====
 int startStage = 0;
 unsigned long lastStageTime = 0;
-int stageDelay = 700;
+int stageDelay = 600;
+
+// ===== GYRO SAFETY =====
+bool gyroReady = false;
+unsigned long gyroCheckStart = 0;
+
+// ===== MOTOR PINS =====
+int M1 = D0;
+int M2 = D1;
+int M3 = D4;
+int M4 = D5;
 
 // ===== WEB PAGE =====
 String page = R"====(
@@ -98,11 +102,11 @@ void toggle(){
 
   if (motorsOn) {
     startStage = 1;
-    currentSpeed = 0;
     lastStageTime = millis();
+    armTime = millis();
+    stabilizeReady = false;
   } else {
     startStage = 0;
-    currentSpeed = 0;
   }
 
   server.send(200,"text/plain", motorsOn ? "ARMED" : "DISARMED");
@@ -142,7 +146,6 @@ void setup() {
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
-  Serial.println(WiFi.softAPIP());
 
   server.on("/", handleRoot);
   server.on("/toggle", toggle);
@@ -150,18 +153,15 @@ void setup() {
   server.on("/update", HTTP_POST, handleUpdate, handleUpload);
   server.begin();
 
-  // ===== MPU =====
   Wire.begin(D3, D2);
 
   if (!mpu.begin(0x68, &Wire)) {
     Serial.println("MPU FAIL");
-   
   }
 
   delay(2000);
 
-  // ===== GYRO CALIBRATION =====
-  Serial.println("Keep STILL...");
+  // ===== GYRO CAL =====
   for (int i = 0; i < 500; i++) {
     sensors_event_t a, g, t;
     mpu.getEvent(&a, &g, &t);
@@ -169,6 +169,7 @@ void setup() {
     gy_offset += g.gyro.y;
     delay(5);
   }
+
   gx_offset /= 500;
   gy_offset /= 500;
 
@@ -189,6 +190,7 @@ void setup() {
   ledcAttach(M4, 20000, 8);
 
   prevTime = millis();
+  gyroCheckStart = millis();
 }
 
 // ===== LOOP =====
@@ -196,30 +198,7 @@ void loop() {
 
   server.handleClient();
 
-  int throttleSpeed = map(throttlePercent, 0, 100, 0, maxLimit);
-  targetSpeed = throttleSpeed;
-
-  if (!motorsOn) {
-    ledcWrite(M1, 0);
-    ledcWrite(M2, 0);
-    ledcWrite(M3, 0);
-    ledcWrite(M4, 0);
-    return;
-  }
-
-  // ===== SEQUENTIAL START =====
-  if (millis() - lastStageTime > stageDelay && startStage < 4) {
-    startStage++;
-    lastStageTime = millis();
-  }
-
-  // ===== RAMP =====
-  if (currentSpeed < targetSpeed) currentSpeed++;
-  else if (currentSpeed > targetSpeed) currentSpeed--;
-
-  int baseThrottle = idleSpeed + currentSpeed;
-
-  // ===== MPU =====
+  // ===== MPU READ =====
   sensors_event_t a, g, t;
   mpu.getEvent(&a, &g, &t);
 
@@ -243,23 +222,78 @@ void loop() {
   pitch -= pitch_offset;
   roll  -= roll_offset;
 
-  // ===== PID =====
-  float pitch_error = -pitch;
-  float roll_error  = -roll;
+  // ===== DEBUG PRINT =====
+  static unsigned long lastPrint = 0;
+  if (millis() - lastPrint > 200) {
+    lastPrint = millis();
+    Serial.print("Pitch:");
+    Serial.print(pitch);
+    Serial.print(" Roll:");
+    Serial.println(roll);
+  }
 
-  float pitch_derivative = (pitch_error - pitch_last_error) / dt;
-  float roll_derivative  = (roll_error - roll_last_error) / dt;
+  // ===== GYRO VALIDATION =====
+  if (!gyroReady) {
+    if (abs(pitch) < 5 && abs(roll) < 5) {
+      if (millis() - gyroCheckStart > 2000) {
+        gyroReady = true;
+        Serial.println("GYRO OK ✅ Motors Enabled");
+      }
+    } else {
+      gyroCheckStart = millis();
+    }
 
-  float pitch_output = Kp * pitch_error + Kd * pitch_derivative;
-  float roll_output  = Kp * roll_error  + Kd * roll_derivative;
+    ledcWrite(M1, 0);
+    ledcWrite(M2, 0);
+    ledcWrite(M3, 0);
+    ledcWrite(M4, 0);
+    return;
+  }
 
-  pitch_output = constrain(pitch_output, -80, 80);
-  roll_output  = constrain(roll_output, -80, 80);
+  if (!motorsOn) {
+    ledcWrite(M1, 0);
+    ledcWrite(M2, 0);
+    ledcWrite(M3, 0);
+    ledcWrite(M4, 0);
+    return;
+  }
 
-  pitch_last_error = pitch_error;
-  roll_last_error  = roll_error;
+  // ===== SEQUENTIAL =====
+  if (millis() - lastStageTime > stageDelay && startStage < 4) {
+    startStage++;
+    lastStageTime = millis();
+  }
 
-  // ===== MOTOR MIXING =====
+  // ===== THROTTLE =====
+  int throttleSpeed = map(throttlePercent, 0, 100, 0, maxLimit);
+  int baseThrottle = idleSpeed + throttleSpeed;
+
+  // ===== PID DELAY =====
+  if (!stabilizeReady && millis() - armTime > 2000) {
+    stabilizeReady = true;
+  }
+
+  float pitch_output = 0;
+  float roll_output  = 0;
+
+  if (stabilizeReady) {
+    float pitch_error = -pitch;
+    float roll_error  = -roll;
+
+    float pitch_derivative = (pitch_error - pitch_last_error) / dt;
+    float roll_derivative  = (roll_error - roll_last_error) / dt;
+
+    pitch_output = Kp * pitch_error + Kd * pitch_derivative;
+    roll_output  = Kp * roll_error  + Kd * roll_derivative;
+
+    pitch_output = constrain(pitch_output, -80, 80);
+    roll_output  = constrain(roll_output, -80, 80);
+
+    pitch_last_error = pitch_error;
+    roll_last_error  = roll_error;
+  }
+
+  // ===== MIXING =====
   int m1 = baseThrottle + pitch_output - roll_output;
   int m2 = baseThrottle + pitch_output + roll_output;
   int m3 = baseThrottle - pitch_output + roll_output;
@@ -270,7 +304,6 @@ void loop() {
   m3 = constrain(m3, 0, 255);
   m4 = constrain(m4, 0, 255);
 
-  // ===== APPLY STAGES =====
   int s1 = (startStage >= 1) ? m1 : 0;
   int s2 = (startStage >= 2) ? m2 : 0;
   int s3 = (startStage >= 3) ? m3 : 0;
@@ -280,28 +313,6 @@ void loop() {
   ledcWrite(M2, s2);
   ledcWrite(M3, s3);
   ledcWrite(M4, s4);
-
-  // ===== DEBUG =====
-  static unsigned long lastPrint = 0;
-  if (millis() - lastPrint > 100) {
-    lastPrint = millis();
-
-    Serial.print("P:");
-    Serial.print(pitch);
-    Serial.print(" PID:");
-    Serial.print(pitch_output);
-
-    Serial.print(" || R:");
-    Serial.print(roll);
-    Serial.print(" PID:");
-    Serial.print(roll_output);
-
-    Serial.print(" || M:");
-    Serial.print(s1); Serial.print(",");
-    Serial.print(s2); Serial.print(",");
-    Serial.print(s3); Serial.print(",");
-    Serial.println(s4);
-  }
 
   delay(5);
 }
