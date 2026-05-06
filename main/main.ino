@@ -289,8 +289,8 @@ void setup() {
            a.acceleration.z
          ) * 180 / PI;
 
-  pitch_offset = pitch;
-  roll_offset = roll;
+  pitch = 0;
+  roll = 0;
 
   // ===== PWM =====
   ledcAttach(M1, 20000, 8);
@@ -378,8 +378,7 @@ void loop() {
     (1 - alpha) * rollAcc;
 
   // ===== OFFSET =====
-  pitch -= pitch_offset;
-  roll -= roll_offset;
+  
 
   // ===== DEBUG =====
   static unsigned long lastPrint = 0;
