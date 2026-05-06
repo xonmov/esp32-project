@@ -64,10 +64,10 @@ bool gyroReady = false;
 unsigned long gyroCheckStart = 0;
 
 // ===== MOTOR PINS =====
-int M1 = D0;
-int M2 = D1;
-int M3 = D4;
-int M4 = D5;
+int M1 = 8;
+int M2 = 9;
+int M3 = 5;
+int M4 = 6;
 
 // ===== WEB PAGE =====
 String page = R"====(
