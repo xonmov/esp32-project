@@ -95,9 +95,12 @@ function setThrottle(v){
 )====";
 
 // ===== WEB =====
-void handleRoot(){ server.send(200,"text/html",page); }
+void handleRoot() {
+  server.send(200, "text/html", page);
+}
 
-void toggle(){
+void toggle() {
+
   motorsOn = !motorsOn;
 
   if (motorsOn) {
@@ -105,85 +108,142 @@ void toggle(){
     lastStageTime = millis();
     armTime = millis();
     stabilizeReady = false;
-  } else {
+
+    Serial.println("ARMED");
+  }
+  else {
     startStage = 0;
+
+    ledcWrite(M1, 0);
+    ledcWrite(M2, 0);
+    ledcWrite(M3, 0);
+    ledcWrite(M4, 0);
+
+    Serial.println("DISARMED");
   }
 
-  server.send(200,"text/plain", motorsOn ? "ARMED" : "DISARMED");
+  server.send(200, "text/plain",
+              motorsOn ? "ARMED" : "DISARMED");
 }
 
-void setThrottle(){
+void setThrottle() {
+
   if (server.hasArg("val")) {
     throttlePercent = server.arg("val").toInt();
   }
-  server.send(200,"text/plain","OK");
+
+  server.send(200, "text/plain", "OK");
 }
 
 // ===== OTA =====
-void handleUpdate(){
-  server.send(200,"text/plain",Update.hasError()?"FAIL":"SUCCESS");
+void handleUpdate() {
+
+  server.send(200, "text/plain",
+              Update.hasError() ? "FAIL" : "SUCCESS");
+
   delay(1000);
   ESP.restart();
 }
 
-void handleUpload(){
+void handleUpload() {
+
   HTTPUpload& upload = server.upload();
 
-  if(upload.status == UPLOAD_FILE_START){
+  if (upload.status == UPLOAD_FILE_START) {
+
     Update.begin(UPDATE_SIZE_UNKNOWN);
-  }
-  else if(upload.status == UPLOAD_FILE_WRITE){
+
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+
     Update.write(upload.buf, upload.currentSize);
-  }
-  else if(upload.status == UPLOAD_FILE_END){
+
+  } else if (upload.status == UPLOAD_FILE_END) {
+
     Update.end(true);
   }
 }
 
 // ===== SETUP =====
 void setup() {
+
   Serial.begin(115200);
 
+  // ===== WIFI =====
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
+
+  Serial.println(WiFi.softAPIP());
 
   server.on("/", handleRoot);
   server.on("/toggle", toggle);
   server.on("/throttle", setThrottle);
-  server.on("/update", HTTP_POST, handleUpdate, handleUpload);
+  server.on("/update",
+            HTTP_POST,
+            handleUpdate,
+            handleUpload);
+
   server.begin();
 
+  // ===== I2C =====
   Wire.begin(D3, D2);
 
+  // ===== MPU =====
   if (!mpu.begin(0x68, &Wire)) {
+
     Serial.println("MPU FAIL");
+
+    
   }
+
+  Serial.println("MPU OK");
 
   delay(2000);
 
   // ===== GYRO CAL =====
+  Serial.println("Keep drone flat...");
+
   for (int i = 0; i < 500; i++) {
+
     sensors_event_t a, g, t;
+
     mpu.getEvent(&a, &g, &t);
+
     gx_offset += g.gyro.x;
     gy_offset += g.gyro.y;
+
     delay(5);
   }
 
-  gx_offset /= 500;
-  gy_offset /= 500;
+  gx_offset /= 500.0;
+  gy_offset /= 500.0;
+
+  Serial.println("Gyro calibrated");
 
   // ===== INITIAL ANGLE =====
   sensors_event_t a, g, t;
+
   mpu.getEvent(&a, &g, &t);
 
-  pitch = atan2(-a.acceleration.x, sqrt(a.acceleration.y*a.acceleration.y + a.acceleration.z*a.acceleration.z)) * 180 / PI;
-  roll  = atan2(a.acceleration.y, a.acceleration.z) * 180 / PI;
+  pitch = atan2(
+            a.acceleration.x,
+            sqrt(
+              a.acceleration.y * a.acceleration.y +
+              a.acceleration.z * a.acceleration.z
+            )
+          ) * 180 / PI;
+
+  roll = atan2(
+           a.acceleration.y,
+           sqrt(
+             a.acceleration.x * a.acceleration.x +
+             a.acceleration.z * a.acceleration.z
+           )
+         ) * 180 / PI;
 
   pitch_offset = pitch;
-  roll_offset  = roll;
+  roll_offset = roll;
 
-  // PWM
+  // ===== PWM =====
   ledcAttach(M1, 20000, 8);
   ledcAttach(M2, 20000, 8);
   ledcAttach(M3, 20000, 8);
@@ -191,6 +251,8 @@ void setup() {
 
   prevTime = millis();
   gyroCheckStart = millis();
+
+  Serial.println("Setup complete");
 }
 
 // ===== LOOP =====
@@ -200,46 +262,87 @@ void loop() {
 
   // ===== MPU READ =====
   sensors_event_t a, g, t;
+
   mpu.getEvent(&a, &g, &t);
 
+  // ===== TIME =====
   unsigned long now = millis();
-  float dt = (now - prevTime) / 1000.0;
-  prevTime = now;
-  if (dt <= 0 || dt > 0.1) dt = 0.01;
 
+  float dt = (now - prevTime) / 1000.0;
+
+  prevTime = now;
+
+  if (dt <= 0 || dt > 0.1) {
+    dt = 0.01;
+  }
+
+  // ===== GYRO =====
   float gx = g.gyro.x - gx_offset;
   float gy = g.gyro.y - gy_offset;
 
   float gx_deg = gx * 180 / PI;
   float gy_deg = gy * 180 / PI;
 
-  float pitchAcc = atan2(-a.acceleration.x, sqrt(a.acceleration.y*a.acceleration.y + a.acceleration.z*a.acceleration.z)) * 180 / PI;
-  float rollAcc  = atan2(a.acceleration.y, a.acceleration.z) * 180 / PI;
+  // ===== ACCEL =====
+  float ax = a.acceleration.x;
+  float ay = a.acceleration.y;
+  float az = a.acceleration.z;
 
-  pitch = alpha * (pitch + gx_deg * dt) + (1 - alpha) * pitchAcc;
-  roll  = alpha * (roll  + gy_deg * dt) + (1 - alpha) * rollAcc;
+  // ===== ANGLES =====
+  float pitchAcc = atan2(
+                     ax,
+                     sqrt(ay * ay + az * az)
+                   ) * 180 / PI;
 
+  float rollAcc = atan2(
+                    ay,
+                    sqrt(ax * ax + az * az)
+                  ) * 180 / PI;
+
+  // ===== FILTER =====
+  pitch = alpha *
+          (pitch + gx_deg * dt)
+          +
+          (1 - alpha) * pitchAcc;
+
+  roll = alpha *
+         (roll + gy_deg * dt)
+         +
+         (1 - alpha) * rollAcc;
+
+  // ===== OFFSET =====
   pitch -= pitch_offset;
-  roll  -= roll_offset;
+  roll -= roll_offset;
 
-  // ===== DEBUG PRINT =====
+  // ===== DEBUG =====
   static unsigned long lastPrint = 0;
+
   if (millis() - lastPrint > 200) {
+
     lastPrint = millis();
+
     Serial.print("Pitch:");
     Serial.print(pitch);
+
     Serial.print(" Roll:");
     Serial.println(roll);
   }
 
-  // ===== GYRO VALIDATION =====
+  // ===== GYRO CHECK =====
   if (!gyroReady) {
-    if (abs(pitch) < 5 && abs(roll) < 5) {
+
+    if (abs(pitch) < 5 &&
+        abs(roll) < 5) {
+
       if (millis() - gyroCheckStart > 2000) {
+
         gyroReady = true;
-        Serial.println("GYRO OK ✅ Motors Enabled");
+
+        Serial.println("GYRO OK ✅");
       }
+
     } else {
+
       gyroCheckStart = millis();
     }
 
@@ -247,68 +350,117 @@ void loop() {
     ledcWrite(M2, 0);
     ledcWrite(M3, 0);
     ledcWrite(M4, 0);
+
     return;
   }
 
+  // ===== DISARM =====
   if (!motorsOn) {
+
     ledcWrite(M1, 0);
     ledcWrite(M2, 0);
     ledcWrite(M3, 0);
     ledcWrite(M4, 0);
+
     return;
   }
 
-  // ===== SEQUENTIAL =====
-  if (millis() - lastStageTime > stageDelay && startStage < 4) {
+  // ===== SEQUENTIAL START =====
+  if (millis() - lastStageTime > stageDelay &&
+      startStage < 4) {
+
     startStage++;
+
     lastStageTime = millis();
   }
 
   // ===== THROTTLE =====
-  int throttleSpeed = map(throttlePercent, 0, 100, 0, maxLimit);
-  int baseThrottle = idleSpeed + throttleSpeed;
+  int throttleSpeed =
+    map(throttlePercent,
+        0, 100,
+        0, maxLimit);
+
+  int baseThrottle =
+    idleSpeed + throttleSpeed;
 
   // ===== PID DELAY =====
-  if (!stabilizeReady && millis() - armTime > 2000) {
+  if (!stabilizeReady &&
+      millis() - armTime > 2000) {
+
     stabilizeReady = true;
+
+    Serial.println("PID ENABLED");
   }
 
   float pitch_output = 0;
-  float roll_output  = 0;
+  float roll_output = 0;
 
+  // ===== PID =====
   if (stabilizeReady) {
+
     float pitch_error = -pitch;
-    float roll_error  = -roll;
+    float roll_error = -roll;
 
-    float pitch_derivative = (pitch_error - pitch_last_error) / dt;
-    float roll_derivative  = (roll_error - roll_last_error) / dt;
+    float pitch_derivative =
+      (pitch_error - pitch_last_error) / dt;
 
-    pitch_output = Kp * pitch_error + Kd * pitch_derivative;
-    roll_output  = Kp * roll_error  + Kd * roll_derivative;
+    float roll_derivative =
+      (roll_error - roll_last_error) / dt;
 
-    pitch_output = constrain(pitch_output, -80, 80);
-    roll_output  = constrain(roll_output, -80, 80);
+    pitch_output =
+      Kp * pitch_error +
+      Kd * pitch_derivative;
+
+    roll_output =
+      Kp * roll_error +
+      Kd * roll_derivative;
+
+    pitch_output =
+      constrain(pitch_output,
+                -80, 80);
+
+    roll_output =
+      constrain(roll_output,
+                -80, 80);
 
     pitch_last_error = pitch_error;
-    roll_last_error  = roll_error;
+    roll_last_error = roll_error;
   }
 
   // ===== MIXING =====
-  int m1 = baseThrottle + pitch_output - roll_output;
-  int m2 = baseThrottle + pitch_output + roll_output;
-  int m3 = baseThrottle - pitch_output + roll_output;
-  int m4 = baseThrottle - pitch_output - roll_output;
+  int m1 =
+    baseThrottle +
+    pitch_output -
+    roll_output;
 
+  int m2 =
+    baseThrottle +
+    pitch_output +
+    roll_output;
+
+  int m3 =
+    baseThrottle -
+    pitch_output +
+    roll_output;
+
+  int m4 =
+    baseThrottle -
+    pitch_output -
+    roll_output;
+
+  // ===== LIMIT =====
   m1 = constrain(m1, 0, 255);
   m2 = constrain(m2, 0, 255);
   m3 = constrain(m3, 0, 255);
   m4 = constrain(m4, 0, 255);
 
+  // ===== SEQUENTIAL APPLY =====
   int s1 = (startStage >= 1) ? m1 : 0;
   int s2 = (startStage >= 2) ? m2 : 0;
   int s3 = (startStage >= 3) ? m3 : 0;
   int s4 = (startStage >= 4) ? m4 : 0;
 
+  // ===== OUTPUT =====
   ledcWrite(M1, s1);
   ledcWrite(M2, s2);
   ledcWrite(M3, s3);
