@@ -16,7 +16,7 @@ int M3 = 5;
 int M4 = 6;
 
 // ===== MOTOR SPEED =====
-int speedValue = 80;
+int speedValue = 30;
 
 // ===== HTML =====
 String page = R"====(
