@@ -524,6 +524,18 @@ int m4 =
   pitch_output +
   roll_output;
 
+Serial.print("M1:");
+Serial.print(m1);
+
+Serial.print(" M2:");
+Serial.print(m2);
+
+Serial.print(" M3:");
+Serial.print(m3);
+
+Serial.print(" M4:");
+Serial.println(m4);
+
   // ===== LIMIT =====
   m1 = constrain(m1, idleSpeed, 255);
 m2 = constrain(m2, idleSpeed, 255);
