@@ -33,8 +33,8 @@ unsigned long prevTime = 0;
 float alpha = 0.98;
 
 // ===== PID =====
-float Kp = 3.0;
-float Kd = 0.8;
+float Kp = 1.5;
+float Kd = 0.3;
 
 float pitch_last_error = 0;
 float roll_last_error = 0;
@@ -516,24 +516,24 @@ void loop() {
 
   // ===== MIXING =====
   int m1 =
-    baseThrottle +
-    pitch_output -
-    roll_output;
+  baseThrottle -
+  pitch_output +
+  roll_output;
 
-  int m2 =
-    baseThrottle +
-    pitch_output +
-    roll_output;
+int m2 =
+  baseThrottle -
+  pitch_output -
+  roll_output;
 
-  int m3 =
-    baseThrottle -
-    pitch_output +
-    roll_output;
+int m3 =
+  baseThrottle +
+  pitch_output -
+  roll_output;
 
-  int m4 =
-    baseThrottle -
-    pitch_output -
-    roll_output;
+int m4 =
+  baseThrottle +
+  pitch_output +
+  roll_output;
 
   // ===== LIMIT =====
   m1 = constrain(m1, 0, 255);
