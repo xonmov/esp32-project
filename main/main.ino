@@ -33,8 +33,8 @@ unsigned long prevTime = 0;
 float alpha = 0.98;
 
 // ===== PID =====
-float Kp = 1.5;
-float Kd = 0.3;
+float Kp = 0.7;
+float Kd = 0.15;
 
 float pitch_last_error = 0;
 float roll_last_error = 0;
@@ -493,19 +493,8 @@ void loop() {
       Kp * roll_error +
       Kd * roll_derivative;
 
-    pitch_output =
-      constrain(
-        pitch_output,
-        -80,
-        80
-      );
-
-    roll_output =
-      constrain(
-        roll_output,
-        -80,
-        80
-      );
+    pitch_output = constrain(pitch_output, -25, 25);
+roll_output  = constrain(roll_output, -25, 25);
 
     pitch_last_error =
       pitch_error;
@@ -536,10 +525,10 @@ int m4 =
   roll_output;
 
   // ===== LIMIT =====
-  m1 = constrain(m1, 0, 255);
-  m2 = constrain(m2, 0, 255);
-  m3 = constrain(m3, 0, 255);
-  m4 = constrain(m4, 0, 255);
+  m1 = constrain(m1, idleSpeed, 255);
+m2 = constrain(m2, idleSpeed, 255);
+m3 = constrain(m3, idleSpeed, 255);
+m4 = constrain(m4, idleSpeed, 255);
 
   // ===== SEQUENTIAL =====
   int s1 =
