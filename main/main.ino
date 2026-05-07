@@ -525,6 +525,9 @@ int m4 =
   - pitch_output
   + roll_output;
 
+m3 += 2;
+m4 += 2;
+
 Serial.print("M1:");
 Serial.print(m1);
 
