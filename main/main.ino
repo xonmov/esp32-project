@@ -69,6 +69,12 @@ int M2 = 9;
 int M3 = 5;
 int M4 = 6;
 
+// ===== MOTOR TRIM =====
+int trimM1 = 0;
+int trimM2 = 0;
+int trimM3 = 2;
+int trimM4 = 2;
+
 // ===== WEB PAGE =====
 String page = R"====(
 <!DOCTYPE html>
@@ -91,14 +97,47 @@ oninput="setThrottle(this.value)">
 
 <p>
 Throttle:
-<span id="val">0</span>%
+<span id="throttleVal">0</span>%
 </p>
 
+<hr>
+
+<h3>Motor Trim</h3>
+
+<p>M1 Trim</p>
+<input type="range" min="-20" max="20" value="0"
+oninput="setTrim('m1',this.value)">
+<span id="m1v">0</span>
+
+<p>M2 Trim</p>
+<input type="range" min="-20" max="20" value="0"
+oninput="setTrim('m2',this.value)">
+<span id="m2v">0</span>
+
+<p>M3 Trim</p>
+<input type="range" min="-20" max="20" value="2"
+oninput="setTrim('m3',this.value)">
+<span id="m3v">2</span>
+
+<p>M4 Trim</p>
+<input type="range" min="-20" max="20" value="2"
+oninput="setTrim('m4',this.value)">
+<span id="m4v">2</span>
+
 <script>
+
 function setThrottle(v){
-  document.getElementById('val').innerText = v;
+  document.getElementById('throttleVal').innerText = v;
   fetch('/throttle?val=' + v);
 }
+
+function setTrim(motor,val){
+
+  document.getElementById(motor + 'v').innerText = val;
+
+  fetch('/trim?motor=' + motor + '&val=' + val);
+}
+
 </script>
 
 <hr>
@@ -206,6 +245,28 @@ void handleUpload() {
   }
 }
 
+void setTrim() {
+
+  String motor = server.arg("motor");
+  int val = server.arg("val").toInt();
+
+  if (motor == "m1") trimM1 = val;
+  if (motor == "m2") trimM2 = val;
+  if (motor == "m3") trimM3 = val;
+  if (motor == "m4") trimM4 = val;
+
+  Serial.print("TRIMS => ");
+  Serial.print(trimM1);
+  Serial.print(", ");
+  Serial.print(trimM2);
+  Serial.print(", ");
+  Serial.print(trimM3);
+  Serial.print(", ");
+  Serial.println(trimM4);
+
+  server.send(200, "text/plain", "OK");
+}
+
 // ===== SETUP =====
 void setup() {
 
@@ -223,6 +284,8 @@ void setup() {
   server.on("/toggle", toggle);
 
   server.on("/throttle", setThrottle);
+
+  server.on("/trim", setTrim);
 
   server.on(
     "/update",
@@ -525,8 +588,10 @@ int m4 =
   - pitch_output
   + roll_output;
 
-m3 += 2;
-m4 += 2;
+m1 += trimM1;
+m2 += trimM2;
+m3 += trimM3;
+m4 += trimM4;
 
 Serial.print("M1:");
 Serial.print(m1);
